@@ -260,79 +260,505 @@
   // ---------------- Maze generation (recursive backtracker) ----------------
   // ---------------- Improved Maze Generation (difficulty-focused) ----------------
 function makeMaze(n, rand) {
-  const walls = [];
-  for (let r = 0; r < n; r++) {
-    const row = [];
-    for (let c = 0; c < n; c++) row.push(new Set(["N", "E", "S", "W"]));
-    walls.push(row);
+  const DIRS = ["N", "E", "S", "W"];
+
+  const inBounds = (r, c) =>
+    r >= 0 && r < n && c >= 0 && c < n;
+
+  const key = (r, c) => `${r},${c}`;
+
+  // Fisher-Yates shuffle using the supplied deterministic PRNG
+  function shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [array[i], array[j]] = [array[j], array[i]];
+    }
+
+    return array;
   }
 
-  const inBounds = (r, c) => r >= 0 && r < n && c >= 0 && c < n;
+  function generateMaze() {
+    const walls = [];
 
-  const visited = Array.from({ length: n }, () => Array(n).fill(false));
-  const stack = [[0, 0]]; // Start DFS at the actual start cell (top-left)
-  visited[0][0] = true;
+    for (let r = 0; r < n; r++) {
+      const row = [];
 
-  const finishR = n - 1, finishC = n - 1;
+      for (let c = 0; c < n; c++) {
+        row.push(new Set(DIRS));
+      }
 
-  while (stack.length) {
-    const [r, c] = stack[stack.length - 1];
+      walls.push(row);
+    }
 
-    const options = [];
-    for (const d of ["N", "E", "S", "W"]) {
-      const [dr, dc] = DELTA[d];
-      const nr = r + dr, nc = c + dc;
-      if (inBounds(nr, nc) && !visited[nr][nc]) {
-        options.push([d, nr, nc]);
+    const visited = Array.from(
+      { length: n },
+      () => Array(n).fill(false)
+    );
+
+    // SWAPPED:
+    // START = bottom-right
+    // END   = top-left
+    const startR = n - 1;
+    const startC = n - 1;
+
+    const finishR = 0;
+    const finishC = 0;
+
+    // Begin generating from the BOTTOM-RIGHT
+    const stack = [[startR, startC]];
+    visited[startR][startC] = true;
+
+    while (stack.length) {
+      const [r, c] = stack[stack.length - 1];
+
+      // The TOP-LEFT cell is always the terminal cell.
+      // Never expand it, so it can only have one connection.
+      if (r === finishR && c === finishC) {
+        stack.pop();
+        continue;
+      }
+
+      const options = [];
+
+      for (const d of shuffle([...DIRS])) {
+        const [dr, dc] = DELTA[d];
+
+        const nr = r + dr;
+        const nc = c + dc;
+
+        if (
+          inBounds(nr, nc) &&
+          !visited[nr][nc]
+        ) {
+          options.push([d, nr, nc]);
+        }
+      }
+
+      if (!options.length) {
+        stack.pop();
+        continue;
+      }
+
+      const [d, nr, nc] = options[0];
+
+      walls[r][c].delete(d);
+      walls[nr][nc].delete(OPPOSITE[d]);
+
+      visited[nr][nc] = true;
+      stack.push([nr, nc]);
+    }
+
+    return walls;
+  }
+
+  function solveMaze(walls) {
+    // SWAPPED:
+    // Solve from bottom-right to top-left.
+    const queue = [[n - 1, n - 1]];
+    let queueIndex = 0;
+
+    const previous = new Map();
+
+    previous.set(
+      key(n - 1, n - 1),
+      null
+    );
+
+    while (queueIndex < queue.length) {
+      const [r, c] = queue[queueIndex++];
+
+      if (
+        r === 0 &&
+        c === 0
+      ) {
+        break;
+      }
+
+      for (const d of DIRS) {
+        if (walls[r][c].has(d)) {
+          continue;
+        }
+
+        const [dr, dc] = DELTA[d];
+
+        const nr = r + dr;
+        const nc = c + dc;
+
+        if (!inBounds(nr, nc)) {
+          continue;
+        }
+
+        const k = key(nr, nc);
+
+        if (!previous.has(k)) {
+          previous.set(k, [r, c]);
+          queue.push([nr, nc]);
+        }
       }
     }
 
-    if (options.length === 0) {
-      stack.pop();
-      continue;
+    const path = [];
+
+    // Finish is now TOP-LEFT.
+    let current = [0, 0];
+
+    while (current !== null) {
+      path.push(current);
+
+      current = previous.get(
+        key(current[0], current[1])
+      );
     }
 
-    // Shuffle first so direction order never biases the randomness
-    for (let i = options.length - 1; i > 0; i--) {
-      const j = Math.floor(rand() * (i + 1));
-      [options[i], options[j]] = [options[j], options[i]];
-    }
+    path.reverse();
 
-    // Bias AWAY from the finish (bottom-right) so it tends to be
-    // reached last / deepest. That keeps the finish at the far end
-    // of the main winding corridor that starts at (0,0), instead
-    // of near the start.
-    options.sort((a, b) => {
-      const [, aR, aC] = a;
-      const [, bR, bC] = b;
-
-      const aDistFinish = Math.abs(finishR - aR) + Math.abs(finishC - aC);
-      const bDistFinish = Math.abs(finishR - bR) + Math.abs(finishC - bC);
-
-      const treeOrganicness = 1.0
-      const treeWindiness = 1.5
-
-      const aRand = rand() * treeOrganicness;
-      const bRand = rand() * treeOrganicness;
-
-      const aScore = aDistFinish * treeWindiness + aRand;
-      const bScore = bDistFinish * treeWindiness + bRand;
-
-      return bScore - aScore; // prefer farther-from-finish options first
-    });
-
-    const [d, nr, nc] = options[0];
-    walls[r][c].delete(d);
-    walls[nr][nc].delete(OPPOSITE[d]);
-    visited[nr][nc] = true;
-    stack.push([nr, nc]);
+    return path;
   }
 
-  return { n, walls, inBounds };
+  function getOpenNeighbors(walls, r, c) {
+    const result = [];
+
+    for (const d of DIRS) {
+      if (walls[r][c].has(d)) {
+        continue;
+      }
+
+      const [dr, dc] = DELTA[d];
+
+      const nr = r + dr;
+      const nc = c + dc;
+
+      if (inBounds(nr, nc)) {
+        result.push([nr, nc, d]);
+      }
+    }
+
+    return result;
+  }
+
+  function analyzeBranches(walls, solution) {
+    const solutionSet = new Set(
+      solution.map(([r, c]) => key(r, c))
+    );
+
+    const parent = new Map();
+
+    // SWAPPED:
+    // Branch analysis starts from bottom-right.
+    parent.set(
+      key(n - 1, n - 1),
+      null
+    );
+
+    const stack = [[n - 1, n - 1]];
+
+    while (stack.length) {
+      const [r, c] = stack.pop();
+
+      for (const [nr, nc] of getOpenNeighbors(
+        walls,
+        r,
+        c
+      )) {
+        const currentKey = key(r, c);
+        const neighborKey = key(nr, nc);
+
+        if (
+          neighborKey === parent.get(currentKey)
+        ) {
+          continue;
+        }
+
+        if (parent.has(neighborKey)) {
+          continue;
+        }
+
+        parent.set(
+          neighborKey,
+          currentKey
+        );
+
+        stack.push([nr, nc]);
+      }
+    }
+
+    const startKey = key(n - 1, n - 1);
+    const finishKey = key(0, 0);
+
+    const deadEnds = [];
+
+    for (const cellKey of parent.keys()) {
+      if (
+        cellKey === startKey ||
+        cellKey === finishKey
+      ) {
+        continue;
+      }
+
+      let hasChild = false;
+
+      for (const possibleChild of parent.keys()) {
+        if (
+          parent.get(possibleChild) === cellKey
+        ) {
+          hasChild = true;
+          break;
+        }
+      }
+
+      if (!hasChild) {
+        deadEnds.push(cellKey);
+      }
+    }
+
+    const branches = [];
+
+    for (const deadEnd of deadEnds) {
+      const cells = [];
+
+      let current = deadEnd;
+
+      while (current !== null) {
+        cells.push(current);
+
+        const p = parent.get(current);
+
+        if (p === null) {
+          break;
+        }
+
+        if (solutionSet.has(p)) {
+          break;
+        }
+
+        current = p;
+      }
+
+      const origin = current;
+
+      const [endR, endC] =
+        deadEnd.split(",").map(Number);
+
+      const [originR, originC] =
+        origin.split(",").map(Number);
+
+      // Distance from the NEW START (bottom-right).
+      const startDistance =
+        Math.abs(n - 1 - originR) +
+        Math.abs(n - 1 - originC);
+
+      let turns = 0;
+
+      for (let i = 2; i < cells.length; i++) {
+        const [r1, c1] =
+          cells[i - 2].split(",").map(Number);
+
+        const [r2, c2] =
+          cells[i - 1].split(",").map(Number);
+
+        const [r3, c3] =
+          cells[i].split(",").map(Number);
+
+        const d1 =
+          `${r2 - r1},${c2 - c1}`;
+
+        const d2 =
+          `${r3 - r2},${c3 - c2}`;
+
+        if (d1 !== d2) {
+          turns++;
+        }
+      }
+
+      branches.push({
+        length: cells.length,
+        startDistance,
+        turns,
+        deadEnd,
+        origin
+      });
+    }
+
+    return branches;
+  }
+
+  function scoreMaze(walls, solution) {
+    let score = 0;
+
+    score += solution.length * 4;
+
+    let solutionTurns = 0;
+
+    for (let i = 2; i < solution.length; i++) {
+      const [r1, c1] = solution[i - 2];
+      const [r2, c2] = solution[i - 1];
+      const [r3, c3] = solution[i];
+
+      const d1 =
+        `${r2 - r1},${c2 - c1}`;
+
+      const d2 =
+        `${r3 - r2},${c3 - c2}`;
+
+      if (d1 !== d2) {
+        solutionTurns++;
+      }
+    }
+
+    const idealTurns =
+      Math.floor(solution.length * 0.35);
+
+    const turnDifference =
+      Math.abs(
+        solutionTurns - idealTurns
+      );
+
+    score -= turnDifference * 2;
+
+    let boundaryCount = 0;
+
+    for (const [r, c] of solution) {
+      if (
+        r === 0 ||
+        c === 0 ||
+        r === n - 1 ||
+        c === n - 1
+      ) {
+        boundaryCount++;
+      }
+    }
+
+    const boundaryRatio =
+      boundaryCount / solution.length;
+
+    score -= boundaryRatio * 45;
+
+    let currentStraight = 1;
+    let longestStraight = 1;
+
+    for (let i = 2; i < solution.length; i++) {
+      const [r1, c1] = solution[i - 2];
+      const [r2, c2] = solution[i - 1];
+      const [r3, c3] = solution[i];
+
+      const d1 =
+        `${r2 - r1},${c2 - c1}`;
+
+      const d2 =
+        `${r3 - r2},${c3 - c2}`;
+
+      if (d1 === d2) {
+        currentStraight++;
+      } else {
+        currentStraight = 1;
+      }
+
+      longestStraight =
+        Math.max(
+          longestStraight,
+          currentStraight
+        );
+    }
+
+    if (longestStraight > 4) {
+      score -=
+        (longestStraight - 4) * 5;
+    }
+
+    const branches =
+      analyzeBranches(
+        walls,
+        solution
+      );
+
+    for (const branch of branches) {
+      score +=
+        Math.min(branch.length, 5) * 16;
+
+      // Reward branches near the NEW START,
+      // which is now bottom-right.
+      if (branch.startDistance <= 2) {
+        score += 25;
+      } else if (branch.startDistance <= 4) {
+        score += 15;
+      } else {
+        score += 3;
+      }
+
+      score +=
+        Math.min(branch.turns, 3) * 8;
+    }
+
+    const convincingBranches =
+      branches.filter(branch =>
+        branch.length >= 3 &&
+        branch.startDistance <=
+          Math.ceil(n * 0.65) &&
+        branch.turns >= 1
+      );
+
+    score +=
+      Math.min(
+        convincingBranches.length,
+        4
+      ) * 25;
+
+    if (branches.length > 0) {
+      const averageDeadEnd =
+        branches.reduce(
+          (sum, branch) =>
+            sum + branch.length,
+          0
+        ) / branches.length;
+
+      if (
+        averageDeadEnd >= 2 &&
+        averageDeadEnd <= 4
+      ) {
+        score += 15;
+      }
+    }
+
+    return score;
+  }
+
+  // Keep candidate count at 15.
+  const candidateCount = 15;
+
+  let bestWalls = null;
+  let bestScore = -Infinity;
+
+  for (let i = 0; i < candidateCount; i++) {
+    const walls = generateMaze();
+
+    const solution =
+      solveMaze(walls);
+
+    const score =
+      scoreMaze(
+        walls,
+        solution
+      );
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestWalls = walls;
+    }
+  }
+
+  return {
+    n,
+    walls: bestWalls,
+    inBounds
+  };
 }
 
 function buildMazeFromSeed(seedStr, n) {
-  const rand = mulberry32(xmur3(seedStr + "|" + n)());
+  const rand =
+    mulberry32(
+      xmur3(seedStr + "|" + n)()
+    );
+
   return makeMaze(n, rand);
 }
 
