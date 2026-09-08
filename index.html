@@ -719,6 +719,41 @@ const HARD_FEEDBACK = {
   document.getElementById("turn-right").addEventListener("click", ()=>doTurn("right"));
   document.getElementById("forfeit").addEventListener("click", doForfeit);
   document.getElementById("hint-btn").addEventListener("click", doHint);
+  
+  // ---------------- Keyboard shortcuts ----------------
+document.addEventListener("keydown", (e) => {
+  // Prevent arrow keys from scrolling the page
+  if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+    e.preventDefault();
+  }
+  
+  // Only respond if game is active and not game over
+  if (gameOver()) return;
+  
+  switch(e.key) {
+    case "ArrowUp":
+      doForward();
+      break;
+    case "ArrowLeft":
+      doTurn("left");
+      break;
+    case "ArrowRight":
+      doTurn("right");
+      break;
+  }
+});
+
+// Optional: Add shortcut for restart (R key)
+document.addEventListener("keydown", (e) => {
+  if (e.key === "r" || e.key === "R") {
+    e.preventDefault();
+    // Only restart if not in the middle of an animation
+    if (!document.getElementById("forward").disabled) {
+      document.getElementById("btn-restart").click();
+    }
+  }
+});
+
  
   function clampInt(id, lo, hi, fallback){
     const el = document.getElementById(id);
