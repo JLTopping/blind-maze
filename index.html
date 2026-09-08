@@ -309,11 +309,14 @@ function makeMaze(n, rand) {
       const aDistFinish = Math.abs(finishR - aR) + Math.abs(finishC - aC);
       const bDistFinish = Math.abs(finishR - bR) + Math.abs(finishC - bC);
 
-      const aRand = rand() * 0.6;
-      const bRand = rand() * 0.6;
+      const treeOrganicness = 1.0
+      const treeWindiness = 1.5
 
-      const aScore = aDistFinish * 1.2 + aRand;
-      const bScore = bDistFinish * 1.2 + bRand;
+      const aRand = rand() * treeOrganicness;
+      const bRand = rand() * treeOrganicness;
+
+      const aScore = aDistFinish * treeWindiness + aRand;
+      const bScore = bDistFinish * treeWindiness + bRand;
 
       return bScore - aScore; // prefer farther-from-finish options first
     });
