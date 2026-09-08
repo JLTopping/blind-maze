@@ -1,0 +1,2547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Blind Maze</title>
+<style>
+  :root{
+    --bg-bezel:      #0B1220;
+    --bg-screen:     #10192B;
+    --grid-idle:     #35507A;
+    --grid-faint:    #1B2740;
+    --ball:          #FFB454;
+    --ball-glow:     #FFD9A0;
+    --trail:         rgba(255, 180, 84, 0.30);
+    --wall-hit:      #FF5D5D;
+    --wall-fatal:    #FF2C2C;
+    --boundary-hit:  #FF8A3D;
+    --win:           #59E88E;
+    --text-hi:       #EAF1FF;
+    --text-lo:       #8FA3C2;
+    --panel:         #16223B;
+    --panel-border:  #2A3C5E;
+  }
+ 
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+ 
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg-bezel);
+    color: var(--text-hi);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    overscroll-behavior: none;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+  }
+ 
+  .mono { font-family: "SFMono-Regular", "Space Mono", ui-monospace, Menlo, monospace; letter-spacing: 0.02em; }
+ 
+  #app {
+    max-width: 420px;
+    margin: 0 auto;
+    padding: env(safe-area-inset-top, 16px) 16px calc(env(safe-area-inset-bottom, 16px) + 12px);
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+ 
+  header { display: flex; align-items: baseline; justify-content: space-between; padding-top: 8px; }
+  header h1 { font-size: 19px; font-weight: 650; margin: 0; color: var(--text-hi); }
+  header .subtitle { font-size: 11px; color: var(--text-lo); }
+ 
+  .help-top-btn {
+    width: 100%;
+    padding: 10px;
+    font-size: 13px;
+    flex-direction: row;
+    justify-content: center;
+    color: var(--ball);
+    border-color: #4A3A20;
+    background: var(--panel);
+  }
+  
+  .mode-stat .value {
+    color: var(--ball);
+    font-size: 14px;
+  }
+  
+  .mode-description {
+    font-size: 10px;
+    color: var(--text-lo);
+    margin-top: 1px;
+  }
+  
+  #readout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .stat { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 4px; padding: 8px 10px; }
+  .stat .label { font-size: 10px; color: var(--text-lo); margin-bottom: 2px; }
+  .stat .value { font-size: 16px; font-weight: 600; }
+  .stat .value.danger { color: var(--wall-fatal); }
+ 
+  #game-stats-panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 4px 10px;
+  }
+  
+  #game-stats-panel summary {
+    padding: 9px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: var(--text-lo);
+    cursor: pointer;
+  }
+  
+  #game-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    padding: 4px 0 8px;
+  }
+  
+  #game-stats .stat {
+    padding: 8px 9px;
+  }
+  .hints-stat .value-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  #help-btn {
+    padding: 5px 9px;
+    font-size: 10px;
+    border-radius: 5px;
+    flex-direction: row;
+    color: var(--text-lo);
+  }
+
+  #screen-wrap {
+    background: var(--bg-screen); border: 1px solid var(--panel-border); border-radius: 6px;
+    padding: 10px; display: flex; justify-content: center; position: relative;
+  }
+  canvas { display: block; border-radius: 3px; }
+  #reveal-banner {
+    position: absolute; top: 8px; left: 8px; right: 8px; text-align: center;
+    font-size: 11px; color: var(--text-lo); letter-spacing: 0.05em;
+  }
+ 
+  #message {
+    min-height: 34px; text-align: center; font-size: 13px; color: var(--text-lo);
+    transition: color 0.15s ease;
+  }
+  #message.hit { color: var(--wall-hit); }
+  #message.boundary { color: var(--boundary-hit); }
+  #message.win { color: var(--win); }
+  #message.fatal { color: var(--wall-fatal); font-weight: 600; }
+ 
+  #controls { display: grid; grid-template-columns: 1fr 1.3fr 1fr; gap: 10px; }
+  button {
+    font-family: inherit; font-size: 15px; font-weight: 600; color: var(--text-hi);
+    background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px;
+    padding: 16px 8px; display: flex; flex-direction: column; align-items: center; gap: 4px;
+    transition: background 0.08s ease, transform 0.08s ease;
+  }
+  button:active { background: #1E2E4E; transform: scale(0.96); }
+  button .glyph { font-size: 22px; line-height: 1; color: var(--ball); }
+  button:disabled { opacity: 0.35; }
+  #forward .glyph { font-size: 26px; }
+ 
+  #forfeit-row { display: flex; gap: 10px; }
+  #forfeit, #hint-btn { flex: 1; background: transparent; border: 1px dashed var(--panel-border); color: var(--text-lo); font-size: 12px; padding: 10px; flex-direction: row; justify-content: center; }
+  #hint-btn { color: var(--ball); border-color: #4A3A20; }
+ 
+  #maze-actions {
+    display: flex;
+    gap: 10px;
+  }
+
+  #maze-actions button {
+    flex: 1;
+    padding: 12px 8px;
+    font-size: 13px;
+    flex-direction: row;
+    justify-content: center;
+  }
+
+  details { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px; padding: 4px 14px; }
+  summary { padding: 10px 0; font-size: 13px; color: var(--text-lo); cursor: pointer; }
+ 
+  .mode-row { display: flex; gap: 8px; grid-column: 1 / -1; padding-bottom: 4px; }
+  .mode-btn { flex: 1; padding: 10px; font-size: 13px; flex-direction: row; }
+  .mode-btn.active { background: var(--ball); color: var(--bg-screen); border-color: var(--ball); }
+ 
+  .settings-grid { display: grid; grid-template-columns: 1fr auto; gap: 10px 12px; align-items: center; padding-bottom: 10px; }
+  .settings-grid label { font-size: 13px; color: var(--text-hi); }
+  .settings-grid .hint { font-size: 11px; color: var(--text-lo); grid-column: 1 / -1; margin-top: -6px; }
+  .settings-grid input[type=number] {
+    width: 64px; font-family: inherit; font-size: 14px; background: var(--bg-screen);
+    border: 1px solid var(--panel-border); color: var(--text-hi); border-radius: 6px; padding: 6px 8px; text-align: center;
+  }
+  .seed-row { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; }
+  .seed-row input[type=text] {
+    flex: 1; font-family: inherit; font-size: 13px; background: var(--bg-screen);
+    border: 1px solid var(--panel-border); color: var(--text-hi); border-radius: 6px; padding: 8px 10px;
+  }
+  .icon-btn { padding: 8px 10px; font-size: 15px; flex-direction: row; }
+  .settings-actions { display: flex; gap: 10px; padding-bottom: 14px; }
+  .settings-actions button { flex: 1; padding: 12px 8px; font-size: 13px; flex-direction: row; }
+ 
+  #history-summary { font-size: 12px; color: var(--text-lo); padding: 8px 0 4px; line-height: 1.6; }
+  #history-list { max-height: 220px; overflow-y: auto; border-top: 1px solid var(--panel-border); margin-top: 4px; }
+  .hist-row { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; padding: 8px 2px; border-bottom: 1px solid var(--grid-faint); font-size: 11px; }
+  .hist-row .res { font-weight: 700; }
+  .hist-row .res.win { color: var(--win); }
+  .hist-row .res.lost { color: var(--wall-fatal); }
+  .hist-row .res.forfeit { color: var(--text-lo); }
+  .hist-row .meta { color: var(--text-lo); grid-column: 1 / -1; }
+  #history-actions { padding: 10px 0 14px; }
+  #history-actions button { width: 100%; padding: 10px; font-size: 12px; flex-direction: row; color: var(--text-lo); }
+ 
+  #legend { display: flex; flex-wrap: wrap; gap: 10px 16px; font-size: 11px; color: var(--text-lo); justify-content: center; padding: 2px 4px 0; }
+  #legend span { display: inline-flex; align-items: center; gap: 5px; }
+  #legend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  #legend.hidden { display: none; }
+  
+  #help-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.72);
+    padding: 20px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #help-overlay.open {
+    display: flex;
+  }
+
+  #help-box {
+    width: min(390px, 100%);
+    max-height: 85dvh;
+    overflow-y: auto;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  }
+
+  .help-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .help-header h2 {
+    margin: 0;
+    font-size: 18px;
+  }
+
+  #help-close {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    font-size: 25px;
+    font-weight: 400;
+    flex-direction: row;
+    justify-content: center;
+  }
+
+  .help-content {
+    color: var(--text-lo);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  .help-content p {
+    margin: 10px 0;
+  }
+
+  .help-content strong {
+    color: var(--text-hi);
+  }
+
+  .help-content h3 {
+    margin: 16px 0 6px;
+    font-size: 13px;
+    color: var(--text-hi);
+  }
+
+  .help-content ul {
+    margin: 6px 0 10px;
+    padding-left: 20px;
+  }
+
+  .help-content li {
+    margin-bottom: 6px;
+  }
+  
+  .history-note {
+    font-size: 10px;
+    line-height: 1.45;
+    color: var(--text-lo);
+    padding: 2px 0 9px;
+  }
+</style>
+</head>
+<body>
+<div id="help-overlay">
+  <div id="help-box">
+    <div class="help-header">
+      <h2>How to Play</h2>
+      <button id="help-close" type="button">×</button>
+    </div>
+
+    <div class="help-content">
+      <p>
+        <strong>Blind Maze</strong> is a maze you navigate without seeing
+        where you are.
+      </p>
+
+      <p>
+        You start in the <strong>top-left corner</strong>, facing
+        <strong>right (east)</strong>. Your goal is to reach the
+        <strong>bottom-right corner</strong>.
+      </p>
+
+      <h3>Controls</h3>
+      <ul>
+        <li><strong>FORWARD</strong> — move one space in the direction you're facing.</li>
+        <li><strong>LEFT</strong> — turn 90° left.</li>
+        <li><strong>RIGHT</strong> — turn 90° right.</li>
+      </ul>
+
+      <h3>Penalties</h3>
+      <ul>
+        <li>
+          <strong>Boundary hit:</strong> Trying to move outside the maze
+          counts against your boundary-hit limit.
+        </li>
+        <li>
+          <strong>Repeat wall hit:</strong> Hitting the exact same wall again
+          counts as a repeat and brings you closer to losing.
+        </li>
+      </ul>
+
+      <h3>Easy vs. Hard</h3>
+      <ul>
+        <li>
+          <strong>Easy:</strong> Your facing direction is shown on the ball.
+          Use <strong>HINT</strong> for a 2-second look at the maze.
+        </li>
+        <li>
+          <strong>Hard:</strong> Your facing direction is hidden. Use
+          <strong>HINT</strong> to reveal your facing direction for 2 seconds.
+        </li>
+      </ul>
+
+      <p>
+        <strong>Tip:</strong> Keep track of your turns and the walls you've
+        encountered. Since you can't see the maze, your memory is your map.
+      </p>
+    </div>
+  </div>
+</div>
+<div id="app">
+ 
+  <header>
+    <h1>Blind Maze</h1>
+    <div class="subtitle mono">feel your way through</div>
+  </header>
+ 
+  <button id="help-btn" class="help-top-btn">HELP</button>
+  
+  <div id="readout">
+    <div class="stat">
+      <div class="label">MOVES</div>
+      <div class="value mono" id="stat-moves">0</div>
+    </div>
+  
+    <div class="stat mode-stat">
+      <div class="label">MODE</div>
+      <div class="value mono" id="mode-stat-tag">EASY</div>
+      <div class="mode-description" id="mode-stat-desc">facing shown</div>
+    </div>
+  </div>
+  
+  <details id="game-stats-panel">
+    <summary>GAME STATS</summary>
+  
+    <div id="game-stats">
+      <div class="stat">
+        <div class="label">TIME</div>
+        <div class="value mono" id="stat-time">0:00.0</div>
+      </div>
+  
+      <div class="stat">
+        <div class="label">HINTS USED</div>
+        <div class="value mono" id="stat-hints">0</div>
+      </div>
+  
+      <div class="stat">
+        <div class="label">% EXPLORED</div>
+        <div class="value mono" id="stat-explored">0%</div>
+      </div>
+  
+      <div class="stat">
+        <div class="label">DEAD ENDS HIT</div>
+        <div class="value mono" id="stat-dead-ends">0</div>
+      </div>
+  
+      <div class="stat">
+        <div class="label">BOUNDARY HITS</div>
+        <div class="value mono" id="stat-boundary">0 / 1</div>
+      </div>
+  
+      <div class="stat">
+        <div class="label">REPEAT WALL HITS</div>
+        <div class="value mono" id="stat-repeat">0 / 1</div>
+      </div>
+    </div>
+  </details>
+ 
+    <div id="screen-wrap">
+    <div id="reveal-banner" class="mono"></div>
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div id="maze-actions">
+    <button id="maze-new">NEW MAZE</button>
+    <button id="maze-restart">RESTART</button>
+  </div>
+ 
+  <div id="message" class="mono">Facing east. Find the exit.</div>
+
+    <div id="controls">
+    <button id="turn-left"><span class="glyph">↺</span><span>LEFT</span></button>
+    <button id="forward"><span class="glyph">▲</span><span>FORWARD</span></button>
+    <button id="turn-right"><span class="glyph">↻</span><span>RIGHT</span></button>
+  </div>
+  <div id="forfeit-row">
+    <button id="forfeit">FORFEIT — reveal the map</button>
+    <button id="hint-btn">HINT — 2s peek</button>
+  </div>
+ 
+  <div id="legend">
+    <span><i style="background:var(--trail)"></i>path</span>
+    <span><i style="background:var(--wall-hit)"></i>wall hit</span>
+    <span><i style="background:var(--boundary-hit)"></i>boundary hit</span>
+    <span><i style="background:var(--win)"></i>goal</span>
+  </div>
+ 
+  <details open id="settings-panel">
+    <summary>Settings, mode & seed</summary>
+    <div class="settings-grid">
+      <div class="mode-row">
+        <button id="mode-easy" class="mode-btn active">EASY</button>
+        <button id="mode-hard" class="mode-btn">HARD</button>
+      </div>
+      <div class="hint">
+        Easy: the ball shows which way it's facing, and moves/turns are animated toward that direction.
+        Hard: no facing indicator anywhere — not on the ball, not in the text, not in the animation.
+        A HINT gives Easy players a 2-second view of the actual maze, while Hard players get their facing direction for 2 seconds.
+        Every hint you use is logged in your high score.
+      </div>
+ 
+      <label for="in-size">Maze size (n × n)</label>
+      <input type="number" id="in-size" min="3" max="12" value="3" />
+ 
+      <label for="in-boundary">Boundary hits allowed</label>
+      <input type="number" id="in-boundary" min="1" max="9" value="1" />
+      <div class="hint">You lose once boundary hits reach this number. Default 1 — you should already know when you're at the edge.</div>
+ 
+      <label for="in-repeat">Same-wall repeat hits allowed</label>
+      <input type="number" id="in-repeat" min="1" max="9" value="1" />
+      <div class="hint">First hit on a wall is forgiven. Hitting that exact wall again is a "repeat" — you lose once repeats reach this number.</div>
+ 
+      <div class="seed-row">
+        <input type="text" id="in-seed" class="mono" />
+        <button id="btn-copy-seed" class="icon-btn">⧉</button>
+      </div>
+      <div class="hint">Share this seed so someone else can play your exact maze — they enter it and tap New Maze.</div>
+    </div>
+    <div class="settings-actions">
+      <button id="btn-new">NEW MAZE</button>
+      <button id="btn-restart">RESTART (same maze)</button>
+    </div>
+  </details>
+ 
+  <details id="history-panel">
+    <summary>History & high scores</summary>
+    <div id="history-summary"></div>
+  
+    <div class="history-note">
+      ✓ RANDOM games completed normally are eligible for high scores.
+      Custom-seed, replayed, restarted, interrupted, or otherwise non-random
+      games are recorded as unranked. Closing or reloading the app ends the
+      active game and reveals its map.
+    </div>
+  
+    <div id="history-list"></div>
+    <div id="history-actions"><button id="btn-clear-history">CLEAR HISTORY</button></div>
+  </details>
+ 
+</div>
+ 
+<script>
+(() => {
+  const DIRS = ["N","E","S","W"];
+  const DELTA = { N:[-1,0], E:[0,1], S:[1,0], W:[0,-1] };
+  const OPPOSITE = { N:"S", S:"N", E:"W", W:"E" };
+  const ANGLE = { E:0, S:90, W:180, N:270 };
+  const HISTORY_KEY = "blindMazeHistoryV2";
+  const SETTINGS_KEY = "blindMazeSettingsV1";
+  const SESSION_KEY = "blindMazeActiveGameV1";
+  let seedWasRevealed = false;
+ 
+  // ---------------- Seeded RNG (xmur3 + mulberry32) ----------------
+  function xmur3(str){
+    let h = 1779033703 ^ str.length;
+    for(let i=0;i<str.length;i++){
+      h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+      h = h<<13 | h>>>19;
+    }
+    return function(){
+      h = Math.imul(h ^ (h>>>16), 2246822507);
+      h = Math.imul(h ^ (h>>>13), 3266489909);
+      h ^= h>>>16;
+      return h>>>0;
+    };
+  }
+  function mulberry32(a){
+    return function(){
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ a>>>15, 1 | a);
+      t = (t + Math.imul(t ^ t>>>7, 61 | t)) ^ t;
+      return ((t ^ t>>>14) >>> 0) / 4294967296;
+    };
+  }
+  function randomSeed(){ return Math.random().toString(36).slice(2,8).toUpperCase(); }
+ 
+  // ---------------- Maze generation (recursive backtracker) ----------------
+  // ---------------- Improved Maze Generation (difficulty-focused) ----------------
+function makeMaze(n, rand) {
+  const DIRS = ["N", "E", "S", "W"];
+
+  const inBounds = (r, c) =>
+    r >= 0 && r < n && c >= 0 && c < n;
+
+  const key = (r, c) => `${r},${c}`;
+
+  // Fisher-Yates shuffle using the supplied deterministic PRNG
+  function shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [array[i], array[j]] = [array[j], array[i]];
+    }
+
+    return array;
+  }
+
+  function generateMaze() {
+    const walls = [];
+
+    for (let r = 0; r < n; r++) {
+      const row = [];
+
+      for (let c = 0; c < n; c++) {
+        row.push(new Set(DIRS));
+      }
+
+      walls.push(row);
+    }
+
+    const visited = Array.from(
+      { length: n },
+      () => Array(n).fill(false)
+    );
+
+    // SWAPPED:
+    // START = bottom-right
+    // END   = top-left
+    const startR = n - 1;
+    const startC = n - 1;
+
+    const finishR = 0;
+    const finishC = 0;
+
+    // Begin generating from the BOTTOM-RIGHT
+    const stack = [[startR, startC]];
+    visited[startR][startC] = true;
+
+    while (stack.length) {
+      const [r, c] = stack[stack.length - 1];
+
+      // The TOP-LEFT cell is always the terminal cell.
+      // Never expand it, so it can only have one connection.
+      if (r === finishR && c === finishC) {
+        stack.pop();
+        continue;
+      }
+
+      const options = [];
+
+      for (const d of shuffle([...DIRS])) {
+        const [dr, dc] = DELTA[d];
+
+        const nr = r + dr;
+        const nc = c + dc;
+
+        if (
+          inBounds(nr, nc) &&
+          !visited[nr][nc]
+        ) {
+          options.push([d, nr, nc]);
+        }
+      }
+
+      if (!options.length) {
+        stack.pop();
+        continue;
+      }
+
+      const [d, nr, nc] = options[0];
+
+      walls[r][c].delete(d);
+      walls[nr][nc].delete(OPPOSITE[d]);
+
+      visited[nr][nc] = true;
+      stack.push([nr, nc]);
+    }
+
+    return walls;
+  }
+
+  function solveMaze(walls) {
+    // SWAPPED:
+    // Solve from bottom-right to top-left.
+    const queue = [[n - 1, n - 1]];
+    let queueIndex = 0;
+
+    const previous = new Map();
+
+    previous.set(
+      key(n - 1, n - 1),
+      null
+    );
+
+    while (queueIndex < queue.length) {
+      const [r, c] = queue[queueIndex++];
+
+      if (
+        r === 0 &&
+        c === 0
+      ) {
+        break;
+      }
+
+      for (const d of DIRS) {
+        if (walls[r][c].has(d)) {
+          continue;
+        }
+
+        const [dr, dc] = DELTA[d];
+
+        const nr = r + dr;
+        const nc = c + dc;
+
+        if (!inBounds(nr, nc)) {
+          continue;
+        }
+
+        const k = key(nr, nc);
+
+        if (!previous.has(k)) {
+          previous.set(k, [r, c]);
+          queue.push([nr, nc]);
+        }
+      }
+    }
+
+    const path = [];
+
+    // Finish is now TOP-LEFT.
+    let current = [0, 0];
+
+    while (current !== null) {
+      path.push(current);
+
+      current = previous.get(
+        key(current[0], current[1])
+      );
+    }
+
+    path.reverse();
+
+    return path;
+  }
+
+  function getOpenNeighbors(walls, r, c) {
+    const result = [];
+
+    for (const d of DIRS) {
+      if (walls[r][c].has(d)) {
+        continue;
+      }
+
+      const [dr, dc] = DELTA[d];
+
+      const nr = r + dr;
+      const nc = c + dc;
+
+      if (inBounds(nr, nc)) {
+        result.push([nr, nc, d]);
+      }
+    }
+
+    return result;
+  }
+
+  function analyzeBranches(walls, solution) {
+    const solutionSet = new Set(
+      solution.map(([r, c]) => key(r, c))
+    );
+
+    const parent = new Map();
+
+    // SWAPPED:
+    // Branch analysis starts from bottom-right.
+    parent.set(
+      key(n - 1, n - 1),
+      null
+    );
+
+    const stack = [[n - 1, n - 1]];
+
+    while (stack.length) {
+      const [r, c] = stack.pop();
+
+      for (const [nr, nc] of getOpenNeighbors(
+        walls,
+        r,
+        c
+      )) {
+        const currentKey = key(r, c);
+        const neighborKey = key(nr, nc);
+
+        if (
+          neighborKey === parent.get(currentKey)
+        ) {
+          continue;
+        }
+
+        if (parent.has(neighborKey)) {
+          continue;
+        }
+
+        parent.set(
+          neighborKey,
+          currentKey
+        );
+
+        stack.push([nr, nc]);
+      }
+    }
+
+    const startKey = key(n - 1, n - 1);
+    const finishKey = key(0, 0);
+
+    const deadEnds = [];
+
+    for (const cellKey of parent.keys()) {
+      if (
+        cellKey === startKey ||
+        cellKey === finishKey
+      ) {
+        continue;
+      }
+
+      let hasChild = false;
+
+      for (const possibleChild of parent.keys()) {
+        if (
+          parent.get(possibleChild) === cellKey
+        ) {
+          hasChild = true;
+          break;
+        }
+      }
+
+      if (!hasChild) {
+        deadEnds.push(cellKey);
+      }
+    }
+
+    const branches = [];
+
+    for (const deadEnd of deadEnds) {
+      const cells = [];
+
+      let current = deadEnd;
+
+      while (current !== null) {
+        cells.push(current);
+
+        const p = parent.get(current);
+
+        if (p === null) {
+          break;
+        }
+
+        if (solutionSet.has(p)) {
+          break;
+        }
+
+        current = p;
+      }
+
+      const origin = current;
+
+      const [endR, endC] =
+        deadEnd.split(",").map(Number);
+
+      const [originR, originC] =
+        origin.split(",").map(Number);
+
+      // Distance from the NEW START (bottom-right).
+      const startDistance =
+        Math.abs(n - 1 - originR) +
+        Math.abs(n - 1 - originC);
+
+      let turns = 0;
+
+      for (let i = 2; i < cells.length; i++) {
+        const [r1, c1] =
+          cells[i - 2].split(",").map(Number);
+
+        const [r2, c2] =
+          cells[i - 1].split(",").map(Number);
+
+        const [r3, c3] =
+          cells[i].split(",").map(Number);
+
+        const d1 =
+          `${r2 - r1},${c2 - c1}`;
+
+        const d2 =
+          `${r3 - r2},${c3 - c2}`;
+
+        if (d1 !== d2) {
+          turns++;
+        }
+      }
+
+      branches.push({
+        length: cells.length,
+        startDistance,
+        turns,
+        deadEnd,
+        origin
+      });
+    }
+
+    return branches;
+  }
+
+  function scoreMaze(walls, solution) {
+    let score = 0;
+
+    score += solution.length * 4;
+
+    let solutionTurns = 0;
+
+    for (let i = 2; i < solution.length; i++) {
+      const [r1, c1] = solution[i - 2];
+      const [r2, c2] = solution[i - 1];
+      const [r3, c3] = solution[i];
+
+      const d1 =
+        `${r2 - r1},${c2 - c1}`;
+
+      const d2 =
+        `${r3 - r2},${c3 - c2}`;
+
+      if (d1 !== d2) {
+        solutionTurns++;
+      }
+    }
+
+    const idealTurns =
+      Math.floor(solution.length * 0.35);
+
+    const turnDifference =
+      Math.abs(
+        solutionTurns - idealTurns
+      );
+
+    score -= turnDifference * 2;
+
+    let boundaryCount = 0;
+
+    for (const [r, c] of solution) {
+      if (
+        r === 0 ||
+        c === 0 ||
+        r === n - 1 ||
+        c === n - 1
+      ) {
+        boundaryCount++;
+      }
+    }
+
+    const boundaryRatio =
+      boundaryCount / solution.length;
+
+    score -= boundaryRatio * 45;
+
+    let currentStraight = 1;
+    let longestStraight = 1;
+
+    for (let i = 2; i < solution.length; i++) {
+      const [r1, c1] = solution[i - 2];
+      const [r2, c2] = solution[i - 1];
+      const [r3, c3] = solution[i];
+
+      const d1 =
+        `${r2 - r1},${c2 - c1}`;
+
+      const d2 =
+        `${r3 - r2},${c3 - c2}`;
+
+      if (d1 === d2) {
+        currentStraight++;
+      } else {
+        currentStraight = 1;
+      }
+
+      longestStraight =
+        Math.max(
+          longestStraight,
+          currentStraight
+        );
+    }
+
+    if (longestStraight > 4) {
+      score -=
+        (longestStraight - 4) * 5;
+    }
+
+    const branches =
+      analyzeBranches(
+        walls,
+        solution
+      );
+
+    for (const branch of branches) {
+      score +=
+        Math.min(branch.length, 5) * 16;
+
+      // Reward branches near the NEW START,
+      // which is now bottom-right.
+      if (branch.startDistance <= 2) {
+        score += 25;
+      } else if (branch.startDistance <= 4) {
+        score += 15;
+      } else {
+        score += 3;
+      }
+
+      score +=
+        Math.min(branch.turns, 3) * 8;
+    }
+
+    const convincingBranches =
+      branches.filter(branch =>
+        branch.length >= 3 &&
+        branch.startDistance <=
+          Math.ceil(n * 0.65) &&
+        branch.turns >= 1
+      );
+
+    score +=
+      Math.min(
+        convincingBranches.length,
+        4
+      ) * 25;
+
+    if (branches.length > 0) {
+      const averageDeadEnd =
+        branches.reduce(
+          (sum, branch) =>
+            sum + branch.length,
+          0
+        ) / branches.length;
+
+      if (
+        averageDeadEnd >= 2 &&
+        averageDeadEnd <= 4
+      ) {
+        score += 15;
+      }
+    }
+
+    return score;
+  }
+
+  // Keep candidate count at 15.
+  const candidateCount = 15;
+
+  let bestWalls = null;
+  let bestScore = -Infinity;
+
+  for (let i = 0; i < candidateCount; i++) {
+    const walls = generateMaze();
+
+    const solution =
+      solveMaze(walls);
+
+    const score =
+      scoreMaze(
+        walls,
+        solution
+      );
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestWalls = walls;
+    }
+  }
+
+  return {
+    n,
+    walls: bestWalls,
+    inBounds
+  };
+}
+
+function buildMazeFromSeed(seedStr, n) {
+  const rand =
+    mulberry32(
+      xmur3(seedStr + "|" + n)()
+    );
+
+  return makeMaze(n, rand);
+}
+
+  function wallId(r,c,d){
+    if(d==="S" || d==="E") return `${r},${c},${d}`;
+    if(d==="N") return `${r-1},${c},S`;
+    return `${r},${c-1},E`;
+  }
+ 
+  // ---------------- Game state ----------------
+  let maze, game, timerHandle;
+  let selectedMode = "easy";
+  
+  // ---------------- Persistent Settings ----------------
+  function updateSeedField(){
+    const seedInput = document.getElementById("in-seed");
+  
+    if(game && !gameOver()){
+      seedInput.value = "";
+      seedWasRevealed = false;
+    } else if(game){
+      seedInput.value = game.seed;
+      seedWasRevealed = true;
+    }
+  }
+  
+  function saveActiveGame(){
+    if(!game || !maze) return;
+  
+    const state = {
+      seed: game.seed,
+      size: game.size,
+      mode: game.mode,
+  
+      highScoreEligible: game.highScoreEligible,
+  
+      boundaryLimit: game.boundaryLimit,
+      repeatLimit: game.repeatLimit,
+  
+      row: game.row,
+      col: game.col,
+      facing: game.facing,
+      facingAngle: game.facingAngle,
+  
+      finished: game.finished,
+      lost: game.lost,
+      forfeited: game.forfeited,
+  
+      boundaryCount: game.boundaryCount,
+      repeatCount: game.repeatCount,
+  
+      hitWallsSeen: [...game.hitWallsSeen],
+      deadEndsSeen: [...game.deadEndsSeen],
+      moves: game.moves,
+      hintsUsed: game.hintsUsed,
+  
+      path: game.path,
+      hitMarks: game.hitMarks,
+  
+      elapsedMs: game.elapsedMs,
+      startTime: game.startTime,
+  
+      revealed: game.revealed
+    };
+  
+    try {
+      localStorage.setItem(
+        SESSION_KEY,
+        JSON.stringify(state)
+      );
+    } catch(e) {
+      console.warn("Could not save active game:", e);
+    }
+  }
+  function clearActiveGame(){
+    try {
+      localStorage.removeItem(SESSION_KEY);
+    } catch(e) {
+      console.warn("Could not clear active game:", e);
+    }
+  }
+  
+  function saveSettings(){
+    const seedInput = document.getElementById("in-seed");
+
+    // While a game is active, the seed field is intentionally empty.
+    // Save the actual current seed from game.seed instead.
+    const savedSeed =
+      game && game.seed
+        ? game.seed
+        : seedInput.value.trim();
+
+    const settings = {
+      mode: selectedMode,
+      size: document.getElementById("in-size").value,
+      boundary: document.getElementById("in-boundary").value,
+      repeat: document.getElementById("in-repeat").value,
+      seed: savedSeed
+    };
+
+    try {
+      localStorage.setItem(
+        SETTINGS_KEY,
+        JSON.stringify(settings)
+      );
+    } catch(e) {
+      console.warn("Could not save settings:", e);
+    }
+  }
+
+  function loadSettings(){
+    try {
+      const saved = JSON.parse(
+        localStorage.getItem(SETTINGS_KEY)
+      );
+
+      if(!saved) return false;
+
+      if(saved.mode === "easy" || saved.mode === "hard"){
+        selectedMode = saved.mode;
+      }
+
+      if(saved.size !== undefined){
+        document.getElementById("in-size").value = saved.size;
+      }
+
+      if(saved.boundary !== undefined){
+        document.getElementById("in-boundary").value = saved.boundary;
+      }
+
+      if(saved.repeat !== undefined){
+        document.getElementById("in-repeat").value = saved.repeat;
+      }
+
+      if(saved.seed){
+        document.getElementById("in-seed").value = saved.seed;
+      } else {
+        document.getElementById("in-seed").value = randomSeed();
+      }
+
+      return true;
+
+    } catch(e) {
+      console.warn("Could not load saved settings:", e);
+      return false;
+    }
+  }
+  
+  function gameOver(){
+    return !!game && (game.finished || game.lost || game.forfeited);
+  }
+  let hintTimeout = null;
+  let hintAnimation = null;
+ 
+  function newGame(seedStr, n, boundaryLimit, repeatLimit, keepMaze, mode, highScoreEligible){
+    if(hintTimeout){ clearTimeout(hintTimeout); hintTimeout = null; }
+    if(!keepMaze) maze = buildMazeFromSeed(seedStr, n);
+    game = {
+      seed: seedStr, size: n, mode,
+      highScoreEligible: highScoreEligible === true,
+      row:0, col:0, facing:"E", facingAngle: ANGLE["E"],
+      finished:false, lost:false, forfeited:false,
+      boundaryLimit, repeatLimit,
+      boundaryCount:0, repeatCount:0,
+      hitWallsSeen: new Set(),
+      deadEndsSeen: new Set(),
+      moves:0, hintsUsed:0, hintActive:false,
+      path:[[0,0]],
+      hitMarks: [],
+      startTime: performance.now(),
+      elapsedMs: 0,
+      revealed: false,
+    };
+    layoutBlind();
+    renderBlind();
+    document.getElementById("reveal-banner").textContent = "";
+    document.getElementById("legend").classList.add("hidden");
+    document.getElementById("hint-btn").style.display = "flex";
+    updateModeBanner();
+    setMessage(mode==="easy" ? "Facing east. Find the exit." : "Find the exit.", "");
+    setControlsEnabled(true);
+    updateStats();
+    startTimer();
+    saveActiveGame();
+  }
+ 
+  function updateModeBanner(){
+    const tag = document.getElementById("mode-stat-tag");
+    const desc = document.getElementById("mode-stat-desc");
+	 let size = document.getElementById("in-size").value
+  
+    tag.textContent = game.mode.toUpperCase() + " " + size + "x" + size;
+    desc.textContent = game.mode === "easy"
+      ? "facing shown"
+      : "no facing";
+  }
+ 
+  function startTimer(){
+    stopTimer();
+    timerHandle = setInterval(()=>{ game.elapsedMs = performance.now() - game.startTime; updateTimeDisplay(); }, 100);
+  }
+  function stopTimer(){ if(timerHandle) clearInterval(timerHandle); }
+  function formatTime(ms){
+    const s = ms/1000; const m = Math.floor(s/60); const rem = (s - m*60).toFixed(1);
+    return `${m}:${rem.padStart(4,"0")}`;
+  }
+  function updateTimeDisplay(){ document.getElementById("stat-time").textContent = formatTime(game.elapsedMs); }
+  function getExploredPercent(){
+    if(!game || !maze) return 0;
+  
+    const uniqueCells = new Set(
+      game.path.map(([r,c]) => `${r},${c}`)
+    );
+  
+    return Math.round(
+      (uniqueCells.size / (maze.n * maze.n)) * 100
+    );
+  }
+  function updateStats(){
+    document.getElementById("stat-moves").textContent = game.moves;
+    updateTimeDisplay();
+  
+    const b = document.getElementById("stat-boundary");
+    b.textContent = `${game.boundaryCount} / ${game.boundaryLimit}`;
+    b.className =
+      "value mono" +
+      (game.boundaryCount >= game.boundaryLimit-1 ? " danger":"");
+  
+    const rep = document.getElementById("stat-repeat");
+    rep.textContent = `${game.repeatCount} / ${game.repeatLimit}`;
+    rep.className =
+      "value mono" +
+      (game.repeatCount >= game.repeatLimit-1 ? " danger":"");
+  
+    document.getElementById("stat-hints").textContent =
+      game.hintsUsed;
+    
+    document.getElementById("stat-explored").textContent =
+      `${getExploredPercent()}%`;
+    
+    document.getElementById("stat-dead-ends").textContent =
+      game.deadEndsSeen.size;
+  }
+  function isDeadEnd(r, c){
+    if(!maze || !game) return false;
+  
+    // Starting and finishing cells are never counted as dead ends.
+    if(
+      (r === 0 && c === 0) ||
+      (r === maze.n - 1 && c === maze.n - 1)
+    ){
+      return false;
+    }
+  
+    let openCount = 0;
+  
+    for(const d of DIRS){
+      if(!maze.walls[r][c].has(d)){
+        const [dr, dc] = DELTA[d];
+        const nr = r + dr;
+        const nc = c + dc;
+  
+        if(maze.inBounds(nr, nc)){
+          openCount++;
+        }
+      }
+    }
+  
+    return openCount === 1;
+  }
+  function setMessage(text, cls){
+    const el = document.getElementById("message");
+    el.textContent = text;
+    el.className = "mono" + (cls ? " "+cls : "");
+  }
+  function setControlsEnabled(on){
+    document.getElementById("forward").disabled = !on;
+    document.getElementById("turn-left").disabled = !on;
+    document.getElementById("turn-right").disabled = !on;
+    document.getElementById("forfeit").disabled = !on;
+    document.getElementById("hint-btn").disabled = !on;
+  }
+ 
+  // ---------------- Canvas ----------------
+  const canvas = document.getElementById("canvas");
+  const ctx = canvas.getContext("2d");
+  let cell = 40, pad = 14, blindSize = 260;
+ 
+  function setCanvasCss(sizePx){
+    canvas.width = sizePx * devicePixelRatio;
+    canvas.height = sizePx * devicePixelRatio;
+    canvas.style.width = sizePx+"px";
+    canvas.style.height = sizePx+"px";
+    ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+  }
+  function layoutBlind(){ blindSize = Math.min(280, window.innerWidth - 52); setCanvasCss(blindSize); }
+  function layoutReveal(){
+    const n = maze.n;
+    const maxW = Math.min(360, window.innerWidth - 52);
+    cell = Math.floor((maxW - pad*2) / n);
+
+    const size = cell*n + pad*2;
+
+    setCanvasCss(size);
+
+    return size;
+  }
+  function getCss(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+ 
+  // ---- Blind-mode rendering: just a centered ball; no position ever shown ----
+  function renderBlind(offset, flashColor, flashStrength, scale, ballColor){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    const cx = blindSize/2, cy = blindSize/2;
+    const [ox,oy] = offset || [0,0];
+    const bx = cx+ox, by = cy+oy;
+    const s = scale || 1;
+ 
+    if(flashColor && flashStrength>0){
+      ctx.strokeStyle = flashColor; ctx.globalAlpha = flashStrength; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(bx,by, blindSize*0.11*s, 0, Math.PI*2); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+ 
+    ctx.save();
+    ctx.translate(bx,by);
+    ctx.scale(s,s);
+    ctx.shadowColor = getCss("--ball-glow");
+    ctx.shadowBlur = blindSize*0.12;
+    ctx.fillStyle = ballColor || getCss("--ball");
+    ctx.beginPath(); ctx.arc(0,0, blindSize*0.075, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+ 
+    // Facing indicator: shown in easy mode always, and in hard mode only
+    // during the ~2s hint window the player explicitly asked for.
+    //
+    // The arrow points OUTWARD in the direction the player is facing.
+    if(game.mode === "easy" || game.hintActive){
+      ctx.rotate(
+        (game.facingAngle ?? ANGLE[game.facing]) *
+        Math.PI / 180
+      );
+
+      ctx.fillStyle = getCss("--bg-screen");
+
+      ctx.beginPath();
+
+      // Arrow point
+      ctx.moveTo(blindSize * 0.065, 0);
+
+      // Upper rear corner
+      ctx.lineTo(blindSize * 0.020, -blindSize * 0.035);
+
+      // Lower rear corner
+      ctx.lineTo(blindSize * 0.020, blindSize * 0.035);
+
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+ 
+  // ---- Reveal-mode rendering: full maze, path, and hit marks ----
+  function cellCenter(r,c){ return [pad + c*cell + cell/2, pad + r*cell + cell/2]; }
+  function renderReveal(){
+    const n = maze.n;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+ 
+    ctx.strokeStyle = getCss("--grid-faint"); ctx.lineWidth = 1;
+    for(let i=0;i<=n;i++){
+      ctx.beginPath(); ctx.moveTo(pad, pad+i*cell); ctx.lineTo(pad+n*cell, pad+i*cell); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(pad+i*cell, pad); ctx.lineTo(pad+i*cell, pad+n*cell); ctx.stroke();
+    }
+ 
+    ctx.strokeStyle = getCss("--trail"); ctx.lineWidth = Math.max(3, cell*0.12); ctx.lineCap = "round";
+    ctx.beginPath();
+    game.path.forEach(([r,c],i)=>{ const [x,y]=cellCenter(r,c); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); });
+    ctx.stroke();
+ 
+    ctx.lineCap = "square"; ctx.strokeStyle = getCss("--grid-idle"); ctx.lineWidth = Math.max(3, cell*0.1);
+    for(let r=0;r<n;r++){
+      for(let c=0;c<n;c++){
+        const x0=pad+c*cell, y0=pad+r*cell, x1=x0+cell, y1=y0+cell;
+        const w = maze.walls[r][c];
+        const seg=(has,ax,ay,bx,by)=>{ if(has){ ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(bx,by); ctx.stroke(); } };
+        seg(w.has("N")||r===0, x0,y0,x1,y0);
+        seg(w.has("S")||r===n-1, x0,y1,x1,y1);
+        seg(w.has("W")||c===0, x0,y0,x0,y1);
+        seg(w.has("E")||c===n-1, x1,y0,x1,y1);
+      }
+    }
+ 
+    for(const h of game.hitMarks){
+      const [cx,cy] = cellCenter(h.r,h.c);
+      const [dr,dc] = DELTA[h.d];
+      const mx = cx + dc*cell*0.5, my = cy + dr*cell*0.5;
+      ctx.fillStyle = h.type==="fatal" ? getCss("--wall-fatal") : h.type==="boundary" ? getCss("--boundary-hit") : getCss("--wall-hit");
+      ctx.beginPath(); ctx.arc(mx,my, Math.max(3,cell*0.09), 0, Math.PI*2); ctx.fill();
+    }
+ 
+    const [gx,gy] = cellCenter(n-1,n-1);
+    ctx.strokeStyle = getCss("--win"); ctx.lineWidth = 2;
+    ctx.strokeRect(gx-cell*0.28, gy-cell*0.28, cell*0.56, cell*0.56);
+ 
+    const [bx,by] = cellCenter(game.row, game.col);
+    ctx.save();
+    ctx.translate(bx,by);
+    ctx.shadowColor = getCss("--ball-glow"); ctx.shadowBlur = cell*0.3;
+    ctx.fillStyle = getCss("--ball");
+    ctx.beginPath(); ctx.arc(0,0, cell*0.24, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+ 
+  function revealMaze(){
+    game.revealed = true;
+    layoutReveal();
+    renderReveal();
+  
+    document.getElementById("legend").classList.remove("hidden");
+  
+    const scoreStatus = game.highScoreEligible
+      ? "✓ RANDOM"
+      : "✕ UNRANKED";
+  
+    document.getElementById("reveal-banner").textContent =
+      `${maze.n}×${maze.n} · ${game.mode.toUpperCase()} · seed ${game.seed} · ${scoreStatus}`;
+  
+    updateSeedField();
+  }
+ 
+  // ---------------- Animation ----------------
+  function animate(durationMs, onFrame, onDone){
+    const t0 = performance.now();
+    function step(t){
+      let p = Math.min(1, (t-t0)/durationMs);
+      onFrame(p);
+      if(p<1) requestAnimationFrame(step); else onDone && onDone();
+    }
+    requestAnimationFrame(step);
+  }
+  const easeOutQuad = p => 1-(1-p)*(1-p);
+  const easeInQuad = p => p*p;
+  function offsetFor(direction, dist){ const [dr,dc] = DELTA[direction]; return [dc*dist, dr*dist]; }
+ 
+  // Unified feedback animation for forward moves (and, in hard mode, turns too).
+  // In easy mode it travels toward the real facing direction. In hard mode it
+  // never leaves center -- only a symmetric pulse + color flash, so nothing
+  // about direction ever leaks through the animation.
+  const FEEDBACK = {
+    success:  { travel: 0.26, peakScale: 1.45, flashKey: "--win",         flashPeak: 0.55, outMs: 130, backMs: 220 },
+    wall:     { travel: 0.10, peakScale: 1.18, flashKey: "--wall-hit",    flashPeak: 0.9,  outMs: 90,  backMs: 190 },
+    boundary: { travel: 0.055,peakScale: 1.10, flashKey: "--boundary-hit",flashPeak: 0.9,  outMs: 80,  backMs: 190 },
+    turn:     { travel: 0,    peakScale: 1.12, flashKey: "--ball-glow",   flashPeak: 0.35, outMs: 90,  backMs: 140 },
+  };
+const HARD_FEEDBACK = {
+  success:  { peak: 1.55, outMs: 200, backMs: 300, colorKey: "--win",      ring: false, ringPeak: 0 },
+  wall:     { peak: 1.55, outMs: 100, backMs: 150, colorKey: "--wall-hit", ring: false, ringPeak: 0 },
+  boundary: { peak: 1.55, outMs: 100, backMs: 150, colorKey: "--wall-hit", ring: true,  ringPeak: 0.9 },
+};
+ 
+  function animateFeedback(kind, done){
+    if(game.mode === "hard" && kind !== "turn"){
+      animateHardFeedback(kind, done);
+      return;
+    }
+    const cfg = FEEDBACK[kind];
+    const directional = game.mode === "easy" && kind !== "turn";
+    const [tx,ty] = directional ? offsetFor(game.facing, blindSize*cfg.travel) : [0,0];
+    const flash = getCss(cfg.flashKey);
+    setControlsEnabled(false);
+    animate(cfg.outMs, p=>{
+      const e = easeOutQuad(p);
+      renderBlind([tx*e, ty*e], flash, cfg.flashPeak*e, 1+(cfg.peakScale-1)*e);
+    }, ()=>{
+      animate(cfg.backMs, p=>{
+        const e = easeInQuad(p);
+        renderBlind([tx*(1-e), ty*(1-e)], flash, cfg.flashPeak*(1-e), 1+(cfg.peakScale-1)*(1-e));
+      }, ()=>{ setControlsEnabled(true); done && done(); });
+    });
+  }
+ 
+  // Hard mode: no direction ever shown, so instead of moving, the ball
+  // itself grows and changes color for ~half a second -- green on a
+  // successful move, red on any wall hit, red plus an extra ring on a
+  // boundary hit. Never leaves center, so it carries no positional info.
+  function animateHardFeedback(kind, done){
+  const cfg = HARD_FEEDBACK[kind];
+  const ballColor = getCss(cfg.colorKey);
+  const ringColor = cfg.ring ? getCss(cfg.colorKey) : null;
+ 
+  setControlsEnabled(false);
+  animate(cfg.outMs, p => {
+    const e = easeOutQuad(p);
+    renderBlind([0,0], ringColor, cfg.ring ? cfg.ringPeak*e : 0, 1+(cfg.peak-1)*e, ballColor);
+  }, () => {
+    animate(cfg.backMs, p => {
+      const e = easeInQuad(p);
+      renderBlind([0,0], ringColor, cfg.ring ? cfg.ringPeak*(1-e) : 0, 1+(cfg.peak-1)*(1-e), ballColor);
+    }, () => {
+      renderBlind();
+      setControlsEnabled(true);
+      done && done();
+    });
+  });
+}
+ 
+  // Easy-mode-only: rotates the facing indicator on the ball.
+  function animateTurnVisual(fromAngle, toAngle, done){
+    setControlsEnabled(false);
+    let delta = ((toAngle - fromAngle + 540) % 360) - 180;
+    animate(140, p=>{
+      const e = easeOutQuad(p);
+      game.facingAngle = fromAngle + delta*e;
+      renderBlind();
+    }, ()=>{ game.facingAngle = toAngle; renderBlind(); setControlsEnabled(true); done && done(); });
+  }
+ 
+  // ---------------- Game actions ----------------
+  function endGame(result){
+    game.finished = result==="win";
+    game.lost = result==="lost";
+    game.forfeited = result==="forfeit";
+  
+    game.elapsedMs = performance.now() - game.startTime;
+  
+    stopTimer();
+    updateStats();
+    setControlsEnabled(false);
+  
+    revealMaze();
+    saveHistory(result);
+    renderHistory();
+  
+    clearActiveGame();
+  }
+   
+  function doForward(){
+    if(gameOver()) return;
+    const n = maze.n;
+    const [dr,dc] = DELTA[game.facing];
+    const nr = game.row+dr, nc = game.col+dc;
+ 
+    if(!maze.inBounds(nr,nc)){
+      game.boundaryCount++;
+      const fatal = game.boundaryCount >= game.boundaryLimit;
+      game.hitMarks.push({r:game.row,c:game.col,d:game.facing, type: fatal?"fatal":"boundary"});
+      animateFeedback("boundary", ()=>{
+        updateStats();
+        saveActiveGame();
+        if(fatal){ setMessage(`BOUNDARY — lost. You hit the edge of your maze.`, "fatal"); endGame("lost"); }
+        else setMessage(`Boundary. (${game.boundaryCount}/${game.boundaryLimit} — one more and it's over)`, "boundary");
+      });
+      return;
+    }
+ 
+    if(maze.walls[game.row][game.col].has(game.facing)){
+      const id = wallId(game.row, game.col, game.facing);
+      const seenBefore = game.hitWallsSeen.has(id);
+      game.hitWallsSeen.add(id);
+      let fatal = false;
+      if(seenBefore){ game.repeatCount++; fatal = game.repeatCount >= game.repeatLimit; }
+      game.hitMarks.push({r:game.row,c:game.col,d:game.facing, type: fatal?"fatal":"wall"});
+      animateFeedback("wall", ()=>{
+        updateStats();
+        saveActiveGame();
+        if(fatal){ setMessage(`lost - You hit the same wall again.`, "fatal"); endGame("lost"); }
+        else if(seenBefore) setMessage(`That wall again. (${game.repeatCount}/${game.repeatLimit} repeats — careful)`, "hit");
+        else setMessage(`Wall.`, "hit");
+      });
+      return;
+    }
+ 
+    game.moves++;
+
+    animateFeedback("success", ()=>{
+      game.row = nr;
+      game.col = nc;
+      game.path.push([nr,nc]);
+    
+      // Count each unique dead-end cell the player reaches.
+      if(isDeadEnd(nr, nc)){
+        game.deadEndsSeen.add(`${nr},${nc}`);
+      }
+    
+      updateStats();
+      saveActiveGame();
+      if(nr===n-1 && nc===n-1){ setMessage("You solved it! 🎉", "win"); endGame("win"); }
+      else setMessage("Success — you moved.", "");
+    });
+  }
+ 
+  function doTurn(dir){
+    if(gameOver()) return;
+    const idx = DIRS.indexOf(game.facing);
+    const oldAngle = game.facingAngle;
+    game.facing = dir==="right" ? DIRS[(idx+1)%4] : DIRS[(idx+3)%4];
+    const newAngle = ANGLE[game.facing];
+ 
+    if(game.mode === "easy"){
+      setMessage(`Turned ${dir}. Facing ${longDir(game.facing)}.`, "");
+      animateTurnVisual(oldAngle, newAngle, ()=>{
+        saveActiveGame();
+      });
+    } else {
+      game.facingAngle = newAngle;
+      setMessage(`Turned ${dir}.`, "");
+      animateFeedback("turn", ()=>{
+        saveActiveGame();
+      });
+    }
+  }
+  function longDir(d){ return {N:"north", E:"east", S:"south", W:"west"}[d]; }
+ 
+  function doForfeit(){
+    if(gameOver()) return;
+    setMessage("Forfeited.", "");
+    endGame("forfeit");
+  }
+  // ---- Hint rendering: maze/grid visible, but no walls ----
+  function renderHintMap(){
+    const n = maze.n;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.strokeStyle = getCss("--grid-faint");
+    ctx.lineWidth = 1;
+
+    for(let i = 0; i <= n; i++){
+      ctx.beginPath();
+      ctx.moveTo(pad, pad + i * cell);
+      ctx.lineTo(pad + n * cell, pad + i * cell);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(pad + i * cell, pad);
+      ctx.lineTo(pad + i * cell, pad + n * cell);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = getCss("--trail");
+    ctx.lineWidth = Math.max(3, cell * 0.12);
+    ctx.lineCap = "round";
+
+    ctx.beginPath();
+
+    game.path.forEach(([r,c], i) => {
+      const [x,y] = cellCenter(r,c);
+
+      if(i === 0){
+        ctx.moveTo(x,y);
+      } else {
+        ctx.lineTo(x,y);
+      }
+    });
+
+    ctx.stroke();
+
+    const [gx,gy] = cellCenter(n - 1, n - 1);
+
+    ctx.strokeStyle = getCss("--win");
+    ctx.lineWidth = 2;
+
+    ctx.strokeRect(
+      gx - cell * 0.28,
+      gy - cell * 0.28,
+      cell * 0.56,
+      cell * 0.56
+    );
+  }
+  function animateEasyHint(){
+    if(hintAnimation){
+      cancelAnimationFrame(hintAnimation);
+      hintAnimation = null;
+    }
+
+    const SHRINK_MOVE = 200;
+    const FADE_IN = 100;
+    const HOLD = 2000;
+    const FADE_OUT = 100;
+    const RETURN = 200;
+
+    const TOTAL =
+      SHRINK_MOVE +
+      FADE_IN +
+      HOLD +
+      FADE_OUT +
+      RETURN;
+
+    /*
+     * Recalculate the blind layout immediately before we
+     * capture its dimensions. This fixes the first-hint-after-
+     * resize problem.
+     */
+    layoutBlind();
+
+    const blindSizeAtStart = blindSize;
+
+    /*
+     * Switch to the maze-sized canvas once.
+     */
+    layoutReveal();
+
+    const revealSize = cell * maze.n + pad * 2;
+
+    /*
+     * The canvas is now the reveal-sized canvas.
+     *
+     * Horizontally, the canvas grows around its center, so
+     * the old blind center moves to the reveal canvas center.
+     *
+     * Vertically, keep the blind ball's original coordinate.
+     * This prevents the extra downward shift.
+     */
+    const blindCenterX = revealSize / 2;
+    const blindCenterY = blindSizeAtStart / 2;
+
+    /*
+     * This is the exact ball radius used by renderBlind()
+     * at the moment the hint starts.
+     */
+    const blindRadius =
+      blindSizeAtStart * 0.075;
+
+    const [mazeX, mazeY] =
+      cellCenter(game.row, game.col);
+
+    /*
+     * This is the exact ball radius used by renderReveal().
+     */
+    const mazeRadius =
+      cell * 0.24;
+
+    const startTime = performance.now();
+
+    function easeInOut(t){
+      return t < 0.5
+        ? 2 * t * t
+        : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    }
+
+    /*
+     * Draw the normal blind-mode ball at an arbitrary
+     * position and radius.
+     *
+     * The arrow is copied directly from renderBlind(),
+     * with the dimensions scaled proportionally to the
+     * current ball radius.
+     */
+    function drawHintBall(x, y, radius){
+      ctx.save();
+
+      ctx.translate(x, y);
+
+      ctx.shadowColor = getCss("--ball-glow");
+      ctx.shadowBlur = radius / 0.075 * 0.12;
+
+      ctx.fillStyle = getCss("--ball");
+
+      ctx.beginPath();
+      ctx.arc(
+        0,
+        0,
+        radius,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+
+      ctx.shadowBlur = 0;
+
+      // Easy mode always shows facing direction.
+      ctx.rotate(
+        (game.facingAngle ?? ANGLE[game.facing]) *
+        Math.PI / 180
+      );
+
+      ctx.fillStyle = getCss("--bg-screen");
+
+      const size = radius / 0.075;
+
+      ctx.beginPath();
+
+      ctx.moveTo(size * 0.065, 0);
+      ctx.lineTo(size * 0.020, -size * 0.035);
+      ctx.lineTo(size * 0.020, size * 0.035);
+
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    function clearToBackground(){
+      ctx.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
+
+      ctx.fillStyle = getCss("--bg-screen");
+
+      ctx.fillRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
+    }
+
+    function frame(now){
+      const elapsed =
+        now - startTime;
+
+      // ==================================================
+      // 0–200ms
+      //
+      // Normal blind ball shrinks and moves to the
+      // player's actual cell.
+      // ==================================================
+      if(elapsed < SHRINK_MOVE){
+        const t =
+          elapsed / SHRINK_MOVE;
+
+        const e =
+          easeInOut(t);
+
+        clearToBackground();
+
+        const x =
+          blindCenterX +
+          (mazeX - blindCenterX) * e;
+
+        const y =
+          blindCenterY +
+          (mazeY - blindCenterY) * e;
+
+        const radius =
+          blindRadius +
+          (mazeRadius - blindRadius) * e;
+
+        drawHintBall(
+          x,
+          y,
+          radius
+        );
+
+        hintAnimation =
+          requestAnimationFrame(frame);
+
+        return;
+      }
+
+      // ==================================================
+      // 200–300ms
+      //
+      // Wall-less map fades in behind the ball.
+      // ==================================================
+      if(elapsed < SHRINK_MOVE + FADE_IN){
+        const t =
+          (elapsed - SHRINK_MOVE) /
+          FADE_IN;
+
+        const e =
+          easeInOut(t);
+
+        renderHintMap();
+
+        ctx.save();
+
+        ctx.fillStyle =
+          getCss("--bg-screen");
+
+        ctx.globalAlpha =
+          1 - e;
+
+        ctx.fillRect(
+          0,
+          0,
+          canvas.width,
+          canvas.height
+        );
+
+        ctx.restore();
+
+        drawHintBall(
+          mazeX,
+          mazeY,
+          mazeRadius
+        );
+
+        hintAnimation =
+          requestAnimationFrame(frame);
+
+        return;
+      }
+
+      // ==================================================
+      // 300–2300ms
+      //
+      // Wall-less map remains visible for 2 seconds.
+      // ==================================================
+      if(elapsed < SHRINK_MOVE + FADE_IN + HOLD){
+        renderHintMap();
+
+        drawHintBall(
+          mazeX,
+          mazeY,
+          mazeRadius
+        );
+
+        hintAnimation =
+          requestAnimationFrame(frame);
+
+        return;
+      }
+
+      // ==================================================
+      // 2300–2400ms
+      //
+      // Map fades away while the ball remains visible.
+      // ==================================================
+      if(elapsed < SHRINK_MOVE + FADE_IN + HOLD + FADE_OUT){
+        const phaseStart =
+          SHRINK_MOVE +
+          FADE_IN +
+          HOLD;
+
+        const t =
+          (elapsed - phaseStart) /
+          FADE_OUT;
+
+        const e =
+          easeInOut(t);
+
+        renderHintMap();
+
+        ctx.save();
+
+        ctx.fillStyle =
+          getCss("--bg-screen");
+
+        ctx.globalAlpha = e;
+
+        ctx.fillRect(
+          0,
+          0,
+          canvas.width,
+          canvas.height
+        );
+
+        ctx.restore();
+
+        drawHintBall(
+          mazeX,
+          mazeY,
+          mazeRadius
+        );
+
+        hintAnimation =
+          requestAnimationFrame(frame);
+
+        return;
+      }
+
+      // ==================================================
+      // 2400–2600ms
+      //
+      // Ball returns to the center and grows back to
+      // exactly its normal blind-mode size.
+      // ==================================================
+      if(elapsed < TOTAL){
+        const phaseStart =
+          SHRINK_MOVE +
+          FADE_IN +
+          HOLD +
+          FADE_OUT;
+
+        const t =
+          (elapsed - phaseStart) /
+          RETURN;
+
+        const e =
+          easeInOut(t);
+
+        clearToBackground();
+
+        const x =
+          mazeX +
+          (blindCenterX - mazeX) * e;
+
+        const y =
+          mazeY +
+          (blindCenterY - mazeY) * e;
+
+        const radius =
+          mazeRadius +
+          (blindRadius - mazeRadius) * e;
+
+        drawHintBall(
+          x,
+          y,
+          radius
+        );
+
+        hintAnimation =
+          requestAnimationFrame(frame);
+
+        return;
+      }
+
+      // ==================================================
+      // COMPLETE
+      // ==================================================
+
+      hintAnimation = null;
+      game.hintActive = false;
+
+      /*
+       * Restore the current blind layout and let the normal
+       * renderer take over completely.
+       */
+      layoutBlind();
+      renderBlind();
+
+      const msgEl =
+        document.getElementById("message");
+
+      msgEl.textContent =
+        game._hintPreviousMessage || "";
+
+      msgEl.className =
+        game._hintPreviousMessageClass || "";
+
+      setControlsEnabled(true);
+
+      saveActiveGame();
+    }
+
+    hintAnimation =
+      requestAnimationFrame(frame);
+  }
+  
+  function doHint(){
+    if(gameOver() || hintTimeout) return;
+  
+    game.hintsUsed++;
+  
+    updateStats();
+    saveActiveGame();
+  
+    const msgEl = document.getElementById("message");
+  
+    game._hintPreviousMessage = msgEl.textContent;
+    game._hintPreviousMessageClass = msgEl.className;
+  
+    // ==================================================
+    // EASY MODE
+    // ==================================================
+  
+    if(game.mode === "easy"){
+      game.hintActive = true;
+    
+      setControlsEnabled(false);
+    
+      setMessage(
+        "HINT — map revealed for 2 seconds.",
+        ""
+      );
+    
+      animateEasyHint();
+    
+      return;
+    }
+  
+    // ==================================================
+    // HARD MODE
+    // ==================================================
+  
+    if(game.mode === "hard"){
+      game.hintActive = true;
+  
+      renderBlind();
+  
+      setMessage(
+        `Facing ${longDir(game.facing)}.`,
+        ""
+      );
+  
+      setControlsEnabled(false);
+  
+      hintTimeout = setTimeout(()=>{
+        game.hintActive = false;
+  
+        renderBlind();
+  
+        msgEl.textContent =
+          game._hintPreviousMessage;
+  
+        msgEl.className =
+          game._hintPreviousMessageClass;
+  
+        setControlsEnabled(true);
+  
+        hintTimeout = null;
+  
+        saveActiveGame();
+      }, 2000);
+    }
+  }
+ 
+  // ---------------- History / high scores ----------------
+  function loadHistory(){
+    try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; } catch(e){ return []; }
+  }
+  function saveHistory(result){
+    const list = loadHistory();
+  
+    list.unshift({
+      seed: game.seed,
+      size: game.size,
+      mode: game.mode,
+      highScoreEligible: game.highScoreEligible,
+      boundaryLimit: game.boundaryLimit,
+      repeatLimit: game.repeatLimit,
+      moves: game.moves,
+      hints: game.hintsUsed,
+      exploredPercent: getExploredPercent(),
+      deadEndsHit: game.deadEndsSeen.size,
+      timeMs: Math.round(game.elapsedMs),
+      result,
+      ts: Date.now(),
+    });
+  
+    localStorage.setItem(
+      HISTORY_KEY,
+      JSON.stringify(list.slice(0,200))
+    );
+  }
+  function renderHistory(){
+    const list = loadHistory();
+    const summaryEl = document.getElementById("history-summary");
+    const listEl = document.getElementById("history-list");
+ 
+    if(list.length===0){ summaryEl.textContent = "No games played yet."; listEl.innerHTML = ""; return; }
+ 
+    const best = {};
+    for(const g of list){
+      if(g.result==="win" && g.highScoreEligible === true){
+        const key = `${g.size}|${g.mode}`;
+    
+        if(!(key in best) || g.timeMs < best[key].timeMs){
+          best[key] = g;
+        }
+      }
+    }
+    const keys = Object.keys(best).sort();
+    summaryEl.innerHTML = keys.length
+      ? "Best times — " + keys.map(k=>{
+          const [size,mode] = k.split("|");
+          return `${size}×${size} ${mode.toUpperCase()}: ${formatTime(best[k].timeMs)} · ${best[k].deadEndsHit ?? 0} dead ends · ${best[k].exploredPercent ?? 0}% explored`;
+        }).join(" · ")
+      : "No wins yet.";
+ 
+    listEl.innerHTML = list.slice(0,30).map(g => {
+      const resClass = g.result==="win" ? "win" : g.result==="lost" ? "lost" : "forfeit";
+      const resLabel = g.result==="win" ? "WIN" : g.result==="lost" ? "LOST" : "FORFEIT";
+      const scoreLabel = g.highScoreEligible === true ? " · ✓" : " · ✕ UNRANKED";
+      const date = new Date(g.ts);
+      const dateStr = date.toLocaleDateString(undefined,{month:"short",day:"numeric"}) + " " + date.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"});
+      return `<div class="hist-row">
+        <span class="res ${resClass} mono">${resLabel} · ${g.mode.toUpperCase()}${g.mode==="hard" ? " · "+(g.hints||0)+" hint"+((g.hints||0)===1?"":"s") : ""}${scoreLabel}</span>
+        <span class="mono">${g.size}×${g.size} · ${formatTime(g.timeMs)} · ${g.moves} moves · ${g.deadEndsHit ?? 0} dead ends · ${g.exploredPercent ?? 0}% explored</span>
+        <span class="meta">seed ${g.seed} · limits: boundary ${g.boundaryLimit}, repeat ${g.repeatLimit} · ${dateStr}</span>
+      </div>`;
+    }).join("");
+  }
+ 
+  // ---------------- Wire up UI ----------------
+  document.getElementById("forward").addEventListener("click", doForward);
+  document.getElementById("turn-left").addEventListener("click", ()=>doTurn("left"));
+  document.getElementById("turn-right").addEventListener("click", ()=>doTurn("right"));
+  document.getElementById("forfeit").addEventListener("click", doForfeit);
+  document.getElementById("hint-btn").addEventListener("click", doHint);
+
+  // Maze buttons below the maze use the exact same functionality
+  // as the buttons inside Settings.
+  document.getElementById("maze-new").addEventListener("click", ()=>{
+    document.getElementById("btn-new").click();
+  });
+
+  document.getElementById("maze-restart").addEventListener("click", ()=>{
+    document.getElementById("btn-restart").click();
+  });
+  
+  // ---------------- Keyboard shortcuts ----------------
+document.addEventListener("keydown", (e) => {
+  // Prevent arrow keys from scrolling the page
+  if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+    e.preventDefault();
+  }
+  
+  // Only respond if game is active and not game over
+  if (gameOver()) return;
+  
+  switch(e.key) {
+    case "ArrowUp":
+      doForward();
+      break;
+    case "ArrowLeft":
+      doTurn("left");
+      break;
+    case "ArrowRight":
+      doTurn("right");
+      break;
+  }
+});
+
+// Optional: Add shortcut for restart (R key)
+document.addEventListener("keydown", (e) => {
+  if (e.key === "r" || e.key === "R") {
+    e.preventDefault();
+    // Only restart if not in the middle of an animation
+    if (!document.getElementById("forward").disabled) {
+      document.getElementById("btn-restart").click();
+    }
+  }
+});
+
+ 
+  function clampInt(id, lo, hi, fallback){
+    const el = document.getElementById(id);
+    let v = parseInt(el.value, 10);
+    if(isNaN(v)) v = fallback;
+    v = Math.max(lo, Math.min(hi, v));
+    el.value = v;
+    return v;
+  }
+ 
+  function setModeSelection(mode){
+    selectedMode = mode;
+  
+    document.getElementById("mode-easy")
+      .classList.toggle("active", mode==="easy");
+  
+    document.getElementById("mode-hard")
+      .classList.toggle("active", mode==="hard");
+  
+    saveSettings();
+  }
+  document.getElementById("mode-easy").addEventListener("click", ()=>setModeSelection("easy"));
+  document.getElementById("mode-hard").addEventListener("click", ()=>setModeSelection("hard"));
+    // Save settings whenever the player changes a numeric preference.
+  ["in-size", "in-boundary", "in-repeat"].forEach(id => {
+    document.getElementById(id).addEventListener("change", ()=>{
+      saveSettings();
+    });
+  });
+
+  document.getElementById("in-seed").addEventListener("change", ()=>{
+    saveSettings();
+  });
+  
+  document.getElementById("btn-copy-seed").addEventListener("click", async ()=>{
+    const val = document.getElementById("in-seed").value;
+    try { await navigator.clipboard.writeText(val); } catch(e){}
+    const btn = document.getElementById("btn-copy-seed");
+    const orig = btn.textContent; btn.textContent = "✓";
+    setTimeout(()=>{ btn.textContent = orig; }, 900);
+  });
+ 
+  document.getElementById("btn-new").addEventListener("click", ()=>{
+    const n = clampInt("in-size", 3, 12, 6);
+    const b = clampInt("in-boundary", 1, 9, 1);
+    const r = clampInt("in-repeat", 1, 9, 1);
+  
+    const seedInput = document.getElementById("in-seed");
+    const enteredSeed = seedInput.value.trim();
+  
+    let seed;
+    let highScoreEligible;
+  
+    if(seedWasRevealed){
+      // The visible seed is from the completed game.
+      // New Maze means generate a genuinely new random maze.
+      seed = randomSeed();
+      highScoreEligible = true;
+    } else if(enteredSeed){
+      // Player manually supplied a seed.
+      seed = enteredSeed;
+      highScoreEligible = false;
+    } else {
+      // Empty field = fresh random maze.
+      seed = randomSeed();
+      highScoreEligible = true;
+    }
+  
+    newGame(
+      seed,
+      n,
+      b,
+      r,
+      false,
+      selectedMode,
+      highScoreEligible
+    );
+  
+    updateSeedField();
+    saveSettings();
+  });
+  document.getElementById("in-seed").addEventListener("input", ()=>{
+    seedWasRevealed = false;
+  });
+  document.getElementById("btn-restart").addEventListener("click", ()=>{
+    const b = clampInt("in-boundary", 1, 9, 1);
+    const r = clampInt("in-repeat", 1, 9, 1);
+  
+    saveSettings();
+  
+    newGame(
+      game.seed,
+      game.size,
+      b,
+      r,
+      true,
+      selectedMode,
+      false
+    );
+  
+    // Hide the seed again while the restarted game is active.
+    updateSeedField();
+  });
+  document.getElementById("btn-clear-history").addEventListener("click", ()=>{
+    localStorage.removeItem(HISTORY_KEY);
+    renderHistory();
+  });
+ 
+  window.addEventListener("resize", ()=>{
+    if(game.revealed){
+      layoutReveal();
+      renderReveal();
+    }
+    else {
+      layoutBlind();
+      renderBlind();
+    }
+  });
+    
+  // ---------------- Help ----------------
+  const helpOverlay = document.getElementById("help-overlay");
+
+  document.getElementById("help-btn").addEventListener("click", ()=>{
+    helpOverlay.classList.add("open");
+  });
+  
+  document.getElementById("help-close").addEventListener("click", ()=>{
+    helpOverlay.classList.remove("open");
+  });
+  
+  helpOverlay.addEventListener("click", (e)=>{
+    if(e.target === helpOverlay){
+      helpOverlay.classList.remove("open");
+    }
+  });
+  
+  function restoreInterruptedGame(){
+    let saved;
+  
+    try {
+      saved = JSON.parse(
+        localStorage.getItem(SESSION_KEY)
+      );
+    } catch(e) {
+      console.warn("Could not load saved active game:", e);
+      return false;
+    }
+  
+    if(!saved) return false;
+  
+    // Rebuild the exact same maze from the saved seed.
+    maze = buildMazeFromSeed(
+      saved.seed,
+      saved.size
+    );
+  
+    game = {
+      seed: saved.seed,
+      size: saved.size,
+      mode: saved.mode,
+  
+      // An interrupted game can never be ranked.
+      highScoreEligible: false,
+  
+      row: saved.row,
+      col: saved.col,
+      facing: saved.facing,
+      facingAngle:
+        saved.facingAngle ?? ANGLE[saved.facing],
+  
+      finished: false,
+      lost: false,
+      forfeited: true,
+  
+      boundaryLimit: saved.boundaryLimit,
+      repeatLimit: saved.repeatLimit,
+  
+      boundaryCount: saved.boundaryCount,
+      repeatCount: saved.repeatCount,
+  
+      hitWallsSeen:
+        new Set(saved.hitWallsSeen || []),
+      
+      deadEndsSeen:
+        new Set(saved.deadEndsSeen || []),
+      
+      moves: saved.moves,
+      hintsUsed: saved.hintsUsed,
+  
+      hintActive: false,
+  
+      path: saved.path || [[0,0]],
+      hitMarks: saved.hitMarks || [],
+  
+      startTime: performance.now(),
+      elapsedMs: saved.elapsedMs || 0,
+  
+      revealed: true
+    };
+  
+    stopTimer();
+  
+    layoutReveal();
+    renderReveal();
+  
+    document.getElementById("legend")
+      .classList.remove("hidden");
+  
+    document.getElementById("reveal-banner").textContent =
+      `${maze.n}×${maze.n} · ${game.mode.toUpperCase()} · seed ${game.seed} · ✕ UNRANKED`;
+  
+    updateModeBanner();
+    updateStats();
+  
+    setControlsEnabled(false);
+  
+    setMessage(
+      "Game ended because the app was closed or reloaded.",
+      "fatal"
+    );
+  
+    updateSeedField();
+  
+    // Record the interrupted run exactly once.
+    saveHistory("forfeit");
+    renderHistory();
+  
+    clearActiveGame();
+  
+    return true;
+  }
+  // ---------------- Boot ----------------
+  loadSettings();
+  
+  // Clamp restored values in case localStorage was manually modified
+  // or the saved values were outside the allowed range.
+  const initialSize =
+    clampInt("in-size", 3, 15, 3);
+  
+  const initialBoundary =
+    clampInt("in-boundary", 1, 9, 1);
+  
+  const initialRepeat =
+    clampInt("in-repeat", 1, 9, 1);
+  
+  let initialSeed =
+    document.getElementById("in-seed").value.trim();
+  
+  if(!initialSeed){
+    initialSeed = randomSeed();
+  }
+  
+  setModeSelection(selectedMode);
+  
+  document.getElementById("history-panel")
+    .removeAttribute("open");
+  
+  // If there is an unfinished game from before the app was
+  // closed/reloaded, reveal that game instead of starting a new one.
+  const restoredInterruptedGame =
+    restoreInterruptedGame();
+  
+  if(!restoredInterruptedGame){
+    newGame(
+      initialSeed,
+      initialSize,
+      initialBoundary,
+      initialRepeat,
+      false,
+      selectedMode,
+      true
+    );
+  
+    // Keep the seed out of the HTML field while the game is active.
+    updateSeedField();
+  
+    saveSettings();
+  }
+  
+  renderHistory();
+})();
+</script>
+</body>
+</html>
