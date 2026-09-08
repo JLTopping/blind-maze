@@ -266,19 +266,18 @@ function makeMaze(n, rand) {
     for (let c = 0; c < n; c++) row.push(new Set(["N", "E", "S", "W"]));
     walls.push(row);
   }
-  
+
   const inBounds = (r, c) => r >= 0 && r < n && c >= 0 && c < n;
-  
-  // Start from the END (bottom-right) and work backwards
-  // This creates more interesting dead ends from the start
+
   const visited = Array.from({ length: n }, () => Array(n).fill(false));
-  const stack = [[n - 1, n - 1]]; // Start at bottom-right instead of top-left
-  visited[n - 1][n - 1] = true;
-  
+  const stack = [[0, 0]]; // Start DFS at the actual start cell (top-left)
+  visited[0][0] = true;
+
+  const finishR = n - 1, finishC = n - 1;
+
   while (stack.length) {
     const [r, c] = stack[stack.length - 1];
-    
-    // Get unvisited neighbors
+
     const options = [];
     for (const d of ["N", "E", "S", "W"]) {
       const [dr, dc] = DELTA[d];
@@ -287,104 +286,53 @@ function makeMaze(n, rand) {
         options.push([d, nr, nc]);
       }
     }
-    
+
     if (options.length === 0) {
       stack.pop();
       continue;
     }
-    
-    // Shuffle options using the PRNG
+
+    // Shuffle first so direction order never biases the randomness
     for (let i = options.length - 1; i > 0; i--) {
       const j = Math.floor(rand() * (i + 1));
       [options[i], options[j]] = [options[j], options[i]];
     }
-    
-    // Bias toward going AWAY from the start (top-left)
-    // This creates more interesting paths when viewed from start
+
+    // Bias AWAY from the finish (bottom-right) so it tends to be
+    // reached last / deepest. That keeps the finish at the far end
+    // of the main winding corridor that starts at (0,0), instead
+    // of near the start.
     options.sort((a, b) => {
-      const aRow = a[1], aCol = a[2];
-      const bRow = b[1], bCol = b[2];
-      
-      // Distance from START (top-left) - we want to go away from it
-      const aDistStart = Math.abs(aRow) + Math.abs(aCol);
-      const bDistStart = Math.abs(bRow) + Math.abs(bCol);
-      
-      // Add randomness from the PRNG
+      const [, aR, aC] = a;
+      const [, bR, bC] = b;
+
+      const aDistFinish = Math.abs(finishR - aR) + Math.abs(finishC - aC);
+      const bDistFinish = Math.abs(finishR - bR) + Math.abs(finishC - bC);
+
       const aRand = rand() * 0.6;
       const bRand = rand() * 0.6;
-      
-      // Score: prefer paths that maintain distance from start
-      // This creates winding paths when viewed from start
-      const aScore = aDistStart * 1.2 + aRand;
-      const bScore = bDistStart * 1.2 + bRand;
-      
-      return bScore - aScore;
+
+      const aScore = aDistFinish * 1.2 + aRand;
+      const bScore = bDistFinish * 1.2 + bRand;
+
+      return bScore - aScore; // prefer farther-from-finish options first
     });
-    
+
     const [d, nr, nc] = options[0];
     walls[r][c].delete(d);
     walls[nr][nc].delete(OPPOSITE[d]);
     visited[nr][nc] = true;
     stack.push([nr, nc]);
   }
-  
-  // ============================================================
-  // SINGLE LOOP - Only for mazes larger than 4x4
-  // ============================================================
-  /*
-  if (n > 4) {
-    // Try to create exactly one loop
-    let loopCreated = false;
-    let attempts = 0;
-    const maxAttempts = 100;
-    
-    while (!loopCreated && attempts < maxAttempts) {
-      attempts++;
-      
-      // Pick a random cell (not start or end)
-      const r = Math.floor(rand() * n);
-      const c = Math.floor(rand() * n);
-      
-      // Don't touch start or end cells
-      if ((r === 0 && c === 0) || (r === n-1 && c === n-1)) continue;
-      
-      // Try to find a wall to remove
-      const dirs = ["N", "E", "S", "W"];
-      // Shuffle directions
-      for (let i = dirs.length - 1; i > 0; i--) {
-        const j = Math.floor(rand() * (i + 1));
-        [dirs[i], dirs[j]] = [dirs[j], dirs[i]];
-      }
-      
-      for (const d of dirs) {
-        const [dr, dc] = DELTA[d];
-        const nr = r + dr, nc = c + dc;
-        if (!inBounds(nr, nc)) continue;
-        
-        // If there's a wall here, remove it to create a loop
-        if (walls[r][c].has(d)) {
-          const isOuterBoundary = (r === 0 && d === "N") || 
-                                  (r === n-1 && d === "S") || 
-                                  (c === 0 && d === "W") || 
-                                  (c === n-1 && d === "E");
-          
-          if (!isOuterBoundary) {
-            walls[r][c].delete(d);
-            walls[nr][nc].delete(OPPOSITE[d]);
-            loopCreated = true;
-            break;
-          }
-        }
-      }
-    }
-  }
-  */
+
   return { n, walls, inBounds };
 }
-  function buildMazeFromSeed(seedStr, n){
-    const rand = mulberry32(xmur3(seedStr + "|" + n)());
-    return makeMaze(n, rand);
-  }
+
+function buildMazeFromSeed(seedStr, n) {
+  const rand = mulberry32(xmur3(seedStr + "|" + n)());
+  return makeMaze(n, rand);
+}
+
   function wallId(r,c,d){
     if(d==="S" || d==="E") return `${r},${c},${d}`;
     if(d==="N") return `${r-1},${c},S`;
