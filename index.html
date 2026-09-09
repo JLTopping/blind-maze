@@ -437,6 +437,7 @@
   const OPPOSITE = { N:"S", S:"N", E:"W", W:"E" };
   const ANGLE = { E:0, S:90, W:180, N:270 };
   const HISTORY_KEY = "blindMazeHistoryV2";
+  const SETTINGS_KEY = "blindMazeSettingsV1";
  
   // ---------------- Seeded RNG (xmur3 + mulberry32) ----------------
   function xmur3(str){
@@ -976,6 +977,64 @@ function buildMazeFromSeed(seedStr, n) {
   // ---------------- Game state ----------------
   let maze, game, timerHandle;
   let selectedMode = "easy";
+  
+  // ---------------- Persistent Settings ----------------
+  function saveSettings(){
+    const settings = {
+      mode: selectedMode,
+      size: document.getElementById("in-size").value,
+      boundary: document.getElementById("in-boundary").value,
+      repeat: document.getElementById("in-repeat").value,
+      seed: document.getElementById("in-seed").value.trim()
+    };
+
+    try {
+      localStorage.setItem(
+        SETTINGS_KEY,
+        JSON.stringify(settings)
+      );
+    } catch(e) {
+      console.warn("Could not save settings:", e);
+    }
+  }
+
+  function loadSettings(){
+    try {
+      const saved = JSON.parse(
+        localStorage.getItem(SETTINGS_KEY)
+      );
+
+      if(!saved) return false;
+
+      if(saved.mode === "easy" || saved.mode === "hard"){
+        selectedMode = saved.mode;
+      }
+
+      if(saved.size !== undefined){
+        document.getElementById("in-size").value = saved.size;
+      }
+
+      if(saved.boundary !== undefined){
+        document.getElementById("in-boundary").value = saved.boundary;
+      }
+
+      if(saved.repeat !== undefined){
+        document.getElementById("in-repeat").value = saved.repeat;
+      }
+
+      if(saved.seed){
+        document.getElementById("in-seed").value = saved.seed;
+      } else {
+        document.getElementById("in-seed").value = randomSeed();
+      }
+
+      return true;
+
+    } catch(e) {
+      console.warn("Could not load saved settings:", e);
+      return false;
+    }
+  }
  
   function gameOver(){ return game.finished || game.lost || game.forfeited; }
   let hintTimeout = null;
@@ -1099,14 +1158,29 @@ function buildMazeFromSeed(seedStr, n) {
  
     // Facing indicator: shown in easy mode always, and in hard mode only
     // during the ~2s hint window the player explicitly asked for.
+    //
+    // The arrow points OUTWARD in the direction the player is facing.
     if(game.mode === "easy" || game.hintActive){
-      ctx.rotate((game.facingAngle ?? ANGLE[game.facing]) * Math.PI/180);
+      ctx.rotate(
+        (game.facingAngle ?? ANGLE[game.facing]) *
+        Math.PI / 180
+      );
+
       ctx.fillStyle = getCss("--bg-screen");
+
       ctx.beginPath();
-      ctx.moveTo(blindSize*0.02, 0);
-      ctx.lineTo(blindSize*0.06, -blindSize*0.035);
-      ctx.lineTo(blindSize*0.06, blindSize*0.035);
-      ctx.closePath(); ctx.fill();
+
+      // Arrow point
+      ctx.moveTo(blindSize * 0.065, 0);
+
+      // Upper rear corner
+      ctx.lineTo(blindSize * 0.020, -blindSize * 0.035);
+
+      // Lower rear corner
+      ctx.lineTo(blindSize * 0.020, blindSize * 0.035);
+
+      ctx.closePath();
+      ctx.fill();
     }
     ctx.restore();
   }
@@ -1464,15 +1538,32 @@ document.addEventListener("keydown", (e) => {
  
   function setModeSelection(mode){
     selectedMode = mode;
-    document.getElementById("mode-easy").classList.toggle("active", mode==="easy");
-    document.getElementById("mode-hard").classList.toggle("active", mode==="hard");
+  
+    document.getElementById("mode-easy")
+      .classList.toggle("active", mode==="easy");
+  
+    document.getElementById("mode-hard")
+      .classList.toggle("active", mode==="hard");
+  
+    saveSettings();
   }
   document.getElementById("mode-easy").addEventListener("click", ()=>setModeSelection("easy"));
   document.getElementById("mode-hard").addEventListener("click", ()=>setModeSelection("hard"));
- 
+    // Save settings whenever the player changes a numeric preference.
+  ["in-size", "in-boundary", "in-repeat"].forEach(id => {
+    document.getElementById(id).addEventListener("change", ()=>{
+      saveSettings();
+    });
+  });
+
   document.getElementById("btn-random-seed").addEventListener("click", ()=>{
     document.getElementById("in-seed").value = randomSeed();
+    saveSettings();
   });
+  document.getElementById("in-seed").addEventListener("change", ()=>{
+    saveSettings();
+  });
+  
   document.getElementById("btn-copy-seed").addEventListener("click", async ()=>{
     const val = document.getElementById("in-seed").value;
     try { await navigator.clipboard.writeText(val); } catch(e){}
@@ -1482,25 +1573,46 @@ document.addEventListener("keydown", (e) => {
   });
  
   document.getElementById("btn-new").addEventListener("click", ()=>{
-  const n = clampInt("in-size", 3, 12, 6);
-  const b = clampInt("in-boundary", 1, 9, 1);
-  const r = clampInt("in-repeat", 1, 9, 1);
- 
-  const enteredSeed = document.getElementById("in-seed").value.trim();
- 
-  // If the user changed the seed field since the last maze,
-  // treat it as a custom seed. Otherwise generate a new random seed.
-  const seed = enteredSeed !== game.seed
-    ? enteredSeed || randomSeed()
-    : randomSeed();
- 
-  document.getElementById("in-seed").value = seed;
-  newGame(seed, n, b, r, false, selectedMode);
-});
+    const n = clampInt("in-size", 3, 12, 6);
+    const b = clampInt("in-boundary", 1, 9, 1);
+    const r = clampInt("in-repeat", 1, 9, 1);
+  
+    const enteredSeed =
+      document.getElementById("in-seed").value.trim();
+  
+    // If the user changed the seed field since the last maze,
+    // treat it as a custom seed. Otherwise generate a new random seed.
+    const seed = enteredSeed !== game.seed
+      ? enteredSeed || randomSeed()
+      : randomSeed();
+  
+    document.getElementById("in-seed").value = seed;
+  
+    saveSettings();
+  
+    newGame(
+      seed,
+      n,
+      b,
+      r,
+      false,
+      selectedMode
+    );
+  });
   document.getElementById("btn-restart").addEventListener("click", ()=>{
     const b = clampInt("in-boundary", 1, 9, 1);
     const r = clampInt("in-repeat", 1, 9, 1);
-    newGame(game.seed, game.size, b, r, true, selectedMode);
+  
+    saveSettings();
+  
+    newGame(
+      game.seed,
+      game.size,
+      b,
+      r,
+      true,
+      selectedMode
+    );
   });
   document.getElementById("btn-clear-history").addEventListener("click", ()=>{
     localStorage.removeItem(HISTORY_KEY);
@@ -1529,10 +1641,43 @@ document.addEventListener("keydown", (e) => {
     }
   });
  
-  // ---------------- Boot ----------------
-  document.getElementById("in-seed").value = randomSeed();
-  document.getElementById("history-panel").removeAttribute("open");
-  newGame(document.getElementById("in-seed").value, 3, 1, 1, false, selectedMode);
+    // ---------------- Boot ----------------
+  const hadSavedSettings = loadSettings();
+
+  // Clamp restored values in case localStorage was manually modified
+  // or the saved values are outside the allowed range.
+  const initialSize =
+    clampInt("in-size", 3, 12, 3);
+
+  const initialBoundary =
+    clampInt("in-boundary", 1, 9, 1);
+
+  const initialRepeat =
+    clampInt("in-repeat", 1, 9, 1);
+
+  let initialSeed =
+    document.getElementById("in-seed").value.trim();
+
+  if(!initialSeed){
+    initialSeed = randomSeed();
+    document.getElementById("in-seed").value = initialSeed;
+  }
+
+  setModeSelection(selectedMode);
+
+  document.getElementById("history-panel")
+    .removeAttribute("open");
+
+  newGame(
+    initialSeed,
+    initialSize,
+    initialBoundary,
+    initialRepeat,
+    false,
+    selectedMode
+  );
+
+  saveSettings();
   renderHistory();
 })();
 </script>
