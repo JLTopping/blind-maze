@@ -52,14 +52,28 @@
   header h1 { font-size: 19px; font-weight: 650; margin: 0; color: var(--text-hi); }
   header .subtitle { font-size: 11px; color: var(--text-lo); }
  
-  #mode-banner {
-    display: flex; align-items: center; justify-content: center;
-    gap: 6px; font-size: 11px; color: var(--text-lo);
-    background: var(--panel); border: 1px solid var(--panel-border);
-    border-radius: 20px; padding: 6px 12px; align-self: center;
+  .help-top-btn {
+    width: 100%;
+    padding: 10px;
+    font-size: 13px;
+    flex-direction: row;
+    justify-content: center;
+    color: var(--ball);
+    border-color: #4A3A20;
+    background: var(--panel);
   }
-  #mode-banner .tag { color: var(--ball); font-weight: 700; }
- 
+  
+  .mode-stat .value {
+    color: var(--ball);
+    font-size: 14px;
+  }
+  
+  .mode-description {
+    font-size: 10px;
+    color: var(--text-lo);
+    margin-top: 1px;
+  }
+  
   #readout { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
   .stat { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 4px; padding: 8px 10px; }
   .stat .label { font-size: 10px; color: var(--text-lo); margin-bottom: 2px; }
@@ -314,19 +328,38 @@
     <div class="subtitle mono">feel your way through</div>
   </header>
  
-  <div id="mode-banner"><span class="tag mono" id="mode-banner-tag">EASY</span><span id="mode-banner-desc">— facing shown</span></div>
- 
+  <button id="help-btn" class="help-top-btn">HELP</button>
+  
   <div id="readout">
-    <div class="stat"><div class="label">MOVES</div><div class="value mono" id="stat-moves">0</div></div>
-    <div class="stat"><div class="label">TIME</div><div class="value mono" id="stat-time">0:00.0</div></div>
-    <div class="stat"><div class="label">BOUNDARY HITS</div><div class="value mono" id="stat-boundary">0 / 1</div></div>
-    <div class="stat"><div class="label">REPEAT WALL HITS</div><div class="value mono" id="stat-repeat">0 / 1</div></div>
-    <div class="stat hints-stat">
+    <div class="stat">
+      <div class="label">MOVES</div>
+      <div class="value mono" id="stat-moves">0</div>
+    </div>
+
+    <div class="stat">
+      <div class="label">TIME</div>
+      <div class="value mono" id="stat-time">0:00.0</div>
+    </div>
+
+    <div class="stat">
+      <div class="label">BOUNDARY HITS</div>
+      <div class="value mono" id="stat-boundary">0 / 1</div>
+    </div>
+
+    <div class="stat">
+      <div class="label">REPEAT WALL HITS</div>
+      <div class="value mono" id="stat-repeat">0 / 1</div>
+    </div>
+  
+    <div class="stat">
       <div class="label">HINTS USED</div>
-      <div class="value-row">
-        <div class="value mono" id="stat-hints">0</div>
-        <button id="help-btn" type="button">HELP</button>
-      </div>
+      <div class="value mono" id="stat-hints">0</div>
+    </div>
+  
+    <div class="stat mode-stat">
+      <div class="label">MODE</div>
+      <div class="value mono" id="mode-stat-tag">EASY</div>
+      <div class="mode-description" id="mode-stat-desc">facing shown</div>
     </div>
   </div>
  
@@ -981,10 +1014,13 @@ function buildMazeFromSeed(seedStr, n) {
   }
  
   function updateModeBanner(){
-    const tag = document.getElementById("mode-banner-tag");
-    const desc = document.getElementById("mode-banner-desc");
+    const tag = document.getElementById("mode-stat-tag");
+    const desc = document.getElementById("mode-stat-desc");
+  
     tag.textContent = game.mode.toUpperCase();
-    desc.textContent = game.mode==="easy" ? "— facing shown" : "— no facing, ever";
+    desc.textContent = game.mode === "easy"
+      ? "facing shown"
+      : "no facing";
   }
  
   function startTimer(){
@@ -1486,11 +1522,11 @@ document.addEventListener("keydown", (e) => {
   document.getElementById("help-btn").addEventListener("click", ()=>{
     helpOverlay.classList.add("open");
   });
-
+  
   document.getElementById("help-close").addEventListener("click", ()=>{
     helpOverlay.classList.remove("open");
   });
-
+  
   helpOverlay.addEventListener("click", (e)=>{
     if(e.target === helpOverlay){
       helpOverlay.classList.remove("open");
