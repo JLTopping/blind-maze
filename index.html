@@ -1350,7 +1350,7 @@ const HARD_FEEDBACK = {
       game.hitMarks.push({r:game.row,c:game.col,d:game.facing, type: fatal?"fatal":"boundary"});
       animateFeedback("boundary", ()=>{
         updateStats();
-        if(fatal){ setMessage(`BOUNDARY — lost. You already knew you were at the edge.`, "fatal"); endGame("lost"); }
+        if(fatal){ setMessage(`BOUNDARY — lost. You hit the edge of your maze.`, "fatal"); endGame("lost"); }
         else setMessage(`Boundary. (${game.boundaryCount}/${game.boundaryLimit} — one more and it's over)`, "boundary");
       });
       return;
@@ -1365,7 +1365,7 @@ const HARD_FEEDBACK = {
       game.hitMarks.push({r:game.row,c:game.col,d:game.facing, type: fatal?"fatal":"wall"});
       animateFeedback("wall", ()=>{
         updateStats();
-        if(fatal){ setMessage(`Same wall again — lost. You'd already found it.`, "fatal"); endGame("lost"); }
+        if(fatal){ setMessage(`lost - You hit the same wall again.`, "fatal"); endGame("lost"); }
         else if(seenBefore) setMessage(`That wall again. (${game.repeatCount}/${game.repeatLimit} repeats — careful)`, "hit");
         else setMessage(`Wall.`, "hit");
       });
