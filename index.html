@@ -66,6 +66,21 @@
   .stat .value { font-size: 16px; font-weight: 600; }
   .stat .value.danger { color: var(--wall-fatal); }
  
+  .hints-stat .value-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  #help-btn {
+    padding: 5px 9px;
+    font-size: 10px;
+    border-radius: 5px;
+    flex-direction: row;
+    color: var(--text-lo);
+  }
+
   #screen-wrap {
     background: var(--bg-screen); border: 1px solid var(--panel-border); border-radius: 6px;
     padding: 10px; display: flex; justify-content: center; position: relative;
@@ -101,6 +116,19 @@
   #forfeit, #hint-btn { flex: 1; background: transparent; border: 1px dashed var(--panel-border); color: var(--text-lo); font-size: 12px; padding: 10px; flex-direction: row; justify-content: center; }
   #hint-btn { color: var(--ball); border-color: #4A3A20; }
  
+  #maze-actions {
+    display: flex;
+    gap: 10px;
+  }
+
+  #maze-actions button {
+    flex: 1;
+    padding: 12px 8px;
+    font-size: 13px;
+    flex-direction: row;
+    justify-content: center;
+  }
+
   details { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px; padding: 4px 14px; }
   summary { padding: 10px 0; font-size: 13px; color: var(--text-lo); cursor: pointer; }
  
@@ -139,9 +167,146 @@
   #legend span { display: inline-flex; align-items: center; gap: 5px; }
   #legend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
   #legend.hidden { display: none; }
+  
+  #help-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.72);
+    padding: 20px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #help-overlay.open {
+    display: flex;
+  }
+
+  #help-box {
+    width: min(390px, 100%);
+    max-height: 85dvh;
+    overflow-y: auto;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  }
+
+  .help-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .help-header h2 {
+    margin: 0;
+    font-size: 18px;
+  }
+
+  #help-close {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    font-size: 25px;
+    font-weight: 400;
+    flex-direction: row;
+    justify-content: center;
+  }
+
+  .help-content {
+    color: var(--text-lo);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  .help-content p {
+    margin: 10px 0;
+  }
+
+  .help-content strong {
+    color: var(--text-hi);
+  }
+
+  .help-content h3 {
+    margin: 16px 0 6px;
+    font-size: 13px;
+    color: var(--text-hi);
+  }
+
+  .help-content ul {
+    margin: 6px 0 10px;
+    padding-left: 20px;
+  }
+
+  .help-content li {
+    margin-bottom: 6px;
+  }
 </style>
 </head>
 <body>
+<div id="help-overlay">
+  <div id="help-box">
+    <div class="help-header">
+      <h2>How to Play</h2>
+      <button id="help-close" type="button">×</button>
+    </div>
+
+    <div class="help-content">
+      <p>
+        <strong>Blind Maze</strong> is a maze you navigate without seeing
+        where you are.
+      </p>
+
+      <p>
+        You start in the <strong>top-left corner</strong>, facing
+        <strong>right (east)</strong>. Your goal is to reach the
+        <strong>bottom-right corner</strong>.
+      </p>
+
+      <h3>Controls</h3>
+      <ul>
+        <li><strong>FORWARD</strong> — move one space in the direction you're facing.</li>
+        <li><strong>LEFT</strong> — turn 90° left.</li>
+        <li><strong>RIGHT</strong> — turn 90° right.</li>
+      </ul>
+
+      <h3>Penalties</h3>
+      <ul>
+        <li>
+          <strong>Boundary hit:</strong> Trying to move outside the maze
+          counts against your boundary-hit limit.
+        </li>
+        <li>
+          <strong>Wall hit:</strong> Trying to move through an inside wall
+          is recorded.
+        </li>
+        <li>
+          <strong>Repeat wall hit:</strong> Hitting the exact same wall again
+          counts as a repeat and brings you closer to losing.
+        </li>
+      </ul>
+
+      <h3>Easy vs. Hard</h3>
+      <ul>
+        <li>
+          <strong>Easy:</strong> Your facing direction is shown on the ball.
+        </li>
+        <li>
+          <strong>Hard:</strong> Your facing direction is hidden. Use the
+          <strong>HINT</strong> button if you need a 2-second peek.
+        </li>
+      </ul>
+
+      <p>
+        <strong>Tip:</strong> Keep track of your turns and the walls you've
+        encountered. Since you can't see the maze, your memory is your map.
+      </p>
+    </div>
+  </div>
+</div>
 <div id="app">
  
   <header>
@@ -156,17 +321,28 @@
     <div class="stat"><div class="label">TIME</div><div class="value mono" id="stat-time">0:00.0</div></div>
     <div class="stat"><div class="label">BOUNDARY HITS</div><div class="value mono" id="stat-boundary">0 / 1</div></div>
     <div class="stat"><div class="label">REPEAT WALL HITS</div><div class="value mono" id="stat-repeat">0 / 1</div></div>
-    <div class="stat"><div class="label">HINTS USED</div><div class="value mono" id="stat-hints">0</div></div>
+    <div class="stat hints-stat">
+      <div class="label">HINTS USED</div>
+      <div class="value-row">
+        <div class="value mono" id="stat-hints">0</div>
+        <button id="help-btn" type="button">HELP</button>
+      </div>
+    </div>
   </div>
  
-  <div id="screen-wrap">
+    <div id="screen-wrap">
     <div id="reveal-banner" class="mono"></div>
     <canvas id="canvas"></canvas>
   </div>
+
+  <div id="maze-actions">
+    <button id="maze-new">NEW MAZE</button>
+    <button id="maze-restart">RESTART</button>
+  </div>
  
   <div id="message" class="mono">Facing east. Find the exit.</div>
- 
-  <div id="controls">
+
+    <div id="controls">
     <button id="turn-left"><span class="glyph">↺</span><span>LEFT</span></button>
     <button id="forward"><span class="glyph">▲</span><span>FORWARD</span></button>
     <button id="turn-right"><span class="glyph">↻</span><span>RIGHT</span></button>
@@ -1199,6 +1375,16 @@ const HARD_FEEDBACK = {
   document.getElementById("turn-right").addEventListener("click", ()=>doTurn("right"));
   document.getElementById("forfeit").addEventListener("click", doForfeit);
   document.getElementById("hint-btn").addEventListener("click", doHint);
+
+  // Maze buttons below the maze use the exact same functionality
+  // as the buttons inside Settings.
+  document.getElementById("maze-new").addEventListener("click", ()=>{
+    document.getElementById("btn-new").click();
+  });
+
+  document.getElementById("maze-restart").addEventListener("click", ()=>{
+    document.getElementById("btn-restart").click();
+  });
   
   // ---------------- Keyboard shortcuts ----------------
 document.addEventListener("keydown", (e) => {
@@ -1292,6 +1478,23 @@ document.addEventListener("keydown", (e) => {
   window.addEventListener("resize", ()=>{
     if(game.revealed){ layoutReveal(); renderReveal(); }
     else { layoutBlind(); renderBlind(); }
+  });
+  
+  // ---------------- Help ----------------
+  const helpOverlay = document.getElementById("help-overlay");
+
+  document.getElementById("help-btn").addEventListener("click", ()=>{
+    helpOverlay.classList.add("open");
+  });
+
+  document.getElementById("help-close").addEventListener("click", ()=>{
+    helpOverlay.classList.remove("open");
+  });
+
+  helpOverlay.addEventListener("click", (e)=>{
+    if(e.target === helpOverlay){
+      helpOverlay.classList.remove("open");
+    }
   });
  
   // ---------------- Boot ----------------
