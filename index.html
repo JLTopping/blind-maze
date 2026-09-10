@@ -451,6 +451,7 @@
   const ANGLE = { E:0, S:90, W:180, N:270 };
   const HISTORY_KEY = "blindMazeHistoryV2";
   const SETTINGS_KEY = "blindMazeSettingsV1";
+  let seedWasRevealed = false;
  
   // ---------------- Seeded RNG (xmur3 + mulberry32) ----------------
   function xmur3(str){
@@ -996,12 +997,11 @@ function buildMazeFromSeed(seedStr, n) {
     const seedInput = document.getElementById("in-seed");
   
     if(game && !gameOver()){
-      // While playing, the current seed is never placed in the HTML field.
-      // The authoritative seed exists only in game.seed.
       seedInput.value = "";
+      seedWasRevealed = false;
     } else if(game){
-      // Once the game is over, reveal the seed for sharing.
       seedInput.value = game.seed;
+      seedWasRevealed = true;
     }
   }
   
@@ -1650,23 +1650,23 @@ document.addEventListener("keydown", (e) => {
     const b = clampInt("in-boundary", 1, 9, 1);
     const r = clampInt("in-repeat", 1, 9, 1);
   
-    const seedInput =
-      document.getElementById("in-seed");
-  
-    const enteredSeed =
-      seedInput.value.trim();
+    const seedInput = document.getElementById("in-seed");
+    const enteredSeed = seedInput.value.trim();
   
     let seed;
     let highScoreEligible;
   
-    if(enteredSeed){
-      // A seed was explicitly supplied by the player.
-      // It may be the current seed or a completely different seed,
-      // but either way this is NOT a fresh random maze.
+    if(seedWasRevealed){
+      // The visible seed is from the completed game.
+      // New Maze means generate a genuinely new random maze.
+      seed = randomSeed();
+      highScoreEligible = true;
+    } else if(enteredSeed){
+      // Player manually supplied a seed.
       seed = enteredSeed;
       highScoreEligible = false;
     } else {
-      // Nothing was entered, so create a fresh random maze.
+      // Empty field = fresh random maze.
       seed = randomSeed();
       highScoreEligible = true;
     }
@@ -1681,10 +1681,11 @@ document.addEventListener("keydown", (e) => {
       highScoreEligible
     );
   
-    // Keep the seed out of the HTML field while the game is active.
     updateSeedField();
-  
     saveSettings();
+  });
+  document.getElementById("in-seed").addEventListener("input", ()=>{
+    seedWasRevealed = false;
   });
   document.getElementById("btn-restart").addEventListener("click", ()=>{
     const b = clampInt("in-boundary", 1, 9, 1);
