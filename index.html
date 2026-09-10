@@ -258,6 +258,13 @@
   .help-content li {
     margin-bottom: 6px;
   }
+  
+  .history-note {
+    font-size: 10px;
+    line-height: 1.45;
+    color: var(--text-lo);
+    padding: 2px 0 9px;
+  }
 </style>
 </head>
 <body>
@@ -424,6 +431,12 @@
   <details id="history-panel">
     <summary>History & high scores</summary>
     <div id="history-summary"></div>
+  
+    <div class="history-note">
+      ✓ RANDOM games are eligible for high scores. Custom-seed, replayed,
+      restarted, or otherwise non-random games are recorded as unranked.
+    </div>
+  
     <div id="history-list"></div>
     <div id="history-actions"><button id="btn-clear-history">CLEAR HISTORY</button></div>
   </details>
@@ -979,14 +992,46 @@ function buildMazeFromSeed(seedStr, n) {
   let selectedMode = "easy";
   
   // ---------------- Persistent Settings ----------------
+  function updateSeedField(){
+    const seedInput = document.getElementById("in-seed");
+  
+    if(game && !gameOver()){
+      // While playing, the current seed is never placed in the HTML field.
+      // The authoritative seed exists only in game.seed.
+      seedInput.value = "";
+    } else if(game){
+      // Once the game is over, reveal the seed for sharing.
+      seedInput.value = game.seed;
+    }
+  }
+  
   function saveSettings(){
+    const seedInput = document.getElementById("in-seed");
+  
+    // While a game is active, the seed field is intentionally empty.
+    // Save the actual current seed from game.seed instead.
+    const savedSeed =
+      game && game.seed
+        ? game.seed
+        : seedInput.value.trim();
+  
     const settings = {
       mode: selectedMode,
       size: document.getElementById("in-size").value,
       boundary: document.getElementById("in-boundary").value,
       repeat: document.getElementById("in-repeat").value,
-      seed: document.getElementById("in-seed").value.trim()
+      seed: savedSeed
     };
+  
+    try {
+      localStorage.setItem(
+        SETTINGS_KEY,
+        JSON.stringify(settings)
+      );
+    } catch(e) {
+      console.warn("Could not save settings:", e);
+    }
+  }
 
     try {
       localStorage.setItem(
@@ -1035,15 +1080,16 @@ function buildMazeFromSeed(seedStr, n) {
       return false;
     }
   }
- 
+  
   function gameOver(){ return game.finished || game.lost || game.forfeited; }
   let hintTimeout = null;
  
-  function newGame(seedStr, n, boundaryLimit, repeatLimit, keepMaze, mode){
+  function newGame(seedStr, n, boundaryLimit, repeatLimit, keepMaze, mode, highScoreEligible){
     if(hintTimeout){ clearTimeout(hintTimeout); hintTimeout = null; }
     if(!keepMaze) maze = buildMazeFromSeed(seedStr, n);
     game = {
       seed: seedStr, size: n, mode,
+      highScoreEligible: highScoreEligible === true,
       row:0, col:0, facing:"E", facingAngle: ANGLE["E"],
       finished:false, lost:false, forfeited:false,
       boundaryLimit, repeatLimit,
@@ -1238,9 +1284,19 @@ function buildMazeFromSeed(seedStr, n) {
  
   function revealMaze(){
     game.revealed = true;
-    layoutReveal(); renderReveal();
+    layoutReveal();
+    renderReveal();
+  
     document.getElementById("legend").classList.remove("hidden");
-    document.getElementById("reveal-banner").textContent = `${maze.n}×${maze.n} · ${game.mode.toUpperCase()} · seed ${game.seed}`;
+  
+    const scoreStatus = game.highScoreEligible
+      ? "✓ RANDOM"
+      : "✕ UNRANKED";
+  
+    document.getElementById("reveal-banner").textContent =
+      `${maze.n}×${maze.n} · ${game.mode.toUpperCase()} · seed ${game.seed} · ${scoreStatus}`;
+  
+    updateSeedField();
   }
  
   // ---------------- Animation ----------------
@@ -1332,10 +1388,19 @@ const HARD_FEEDBACK = {
  
   // ---------------- Game actions ----------------
   function endGame(result){
-    game.finished = result==="win"; game.lost = result==="lost"; game.forfeited = result==="forfeit";
+    game.finished = result==="win";
+    game.lost = result==="lost";
+    game.forfeited = result==="forfeit";
+  
     game.elapsedMs = performance.now() - game.startTime;
-    stopTimer(); updateStats(); setControlsEnabled(false);
-    revealMaze(); saveHistory(result); renderHistory();
+  
+    stopTimer();
+    updateStats();
+    setControlsEnabled(false);
+  
+    revealMaze();
+    saveHistory(result);
+    renderHistory();
   }
  
   function doForward(){
@@ -1432,13 +1497,25 @@ const HARD_FEEDBACK = {
   }
   function saveHistory(result){
     const list = loadHistory();
+  
     list.unshift({
-      seed: game.seed, size: game.size, mode: game.mode,
-      boundaryLimit: game.boundaryLimit, repeatLimit: game.repeatLimit,
-      moves: game.moves, hints: game.hintsUsed, timeMs: Math.round(game.elapsedMs),
-      result, ts: Date.now(),
+      seed: game.seed,
+      size: game.size,
+      mode: game.mode,
+      highScoreEligible: game.highScoreEligible,
+      boundaryLimit: game.boundaryLimit,
+      repeatLimit: game.repeatLimit,
+      moves: game.moves,
+      hints: game.hintsUsed,
+      timeMs: Math.round(game.elapsedMs),
+      result,
+      ts: Date.now(),
     });
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(0,200)));
+  
+    localStorage.setItem(
+      HISTORY_KEY,
+      JSON.stringify(list.slice(0,200))
+    );
   }
   function renderHistory(){
     const list = loadHistory();
@@ -1449,9 +1526,12 @@ const HARD_FEEDBACK = {
  
     const best = {};
     for(const g of list){
-      if(g.result==="win"){
+      if(g.result==="win" && g.highScoreEligible === true){
         const key = `${g.size}|${g.mode}`;
-        if(!(key in best) || g.timeMs < best[key].timeMs) best[key] = g;
+    
+        if(!(key in best) || g.timeMs < best[key].timeMs){
+          best[key] = g;
+        }
       }
     }
     const keys = Object.keys(best).sort();
@@ -1465,10 +1545,11 @@ const HARD_FEEDBACK = {
     listEl.innerHTML = list.slice(0,30).map(g => {
       const resClass = g.result==="win" ? "win" : g.result==="lost" ? "lost" : "forfeit";
       const resLabel = g.result==="win" ? "WIN" : g.result==="lost" ? "LOST" : "FORFEIT";
+      const scoreLabel = g.highScoreEligible === true ? " · ✓" : " · ✕ UNRANKED";
       const date = new Date(g.ts);
       const dateStr = date.toLocaleDateString(undefined,{month:"short",day:"numeric"}) + " " + date.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"});
       return `<div class="hist-row">
-        <span class="res ${resClass} mono">${resLabel} · ${g.mode.toUpperCase()}${g.mode==="hard" ? " · "+(g.hints||0)+" hint"+((g.hints||0)===1?"":"s") : ""}</span>
+        <span class="res ${resClass} mono">${resLabel} · ${g.mode.toUpperCase()}${g.mode==="hard" ? " · "+(g.hints||0)+" hint"+((g.hints||0)===1?"":"s") : ""}${scoreLabel}</span>
         <span class="mono">${g.size}×${g.size} · ${formatTime(g.timeMs)} · ${g.moves} moves</span>
         <span class="meta">seed ${g.seed} · limits: boundary ${g.boundaryLimit}, repeat ${g.repeatLimit} · ${dateStr}</span>
       </div>`;
@@ -1577,18 +1658,26 @@ document.addEventListener("keydown", (e) => {
     const b = clampInt("in-boundary", 1, 9, 1);
     const r = clampInt("in-repeat", 1, 9, 1);
   
+    const seedInput =
+      document.getElementById("in-seed");
+  
     const enteredSeed =
-      document.getElementById("in-seed").value.trim();
+      seedInput.value.trim();
   
-    // If the user changed the seed field since the last maze,
-    // treat it as a custom seed. Otherwise generate a new random seed.
-    const seed = enteredSeed !== game.seed
-      ? enteredSeed || randomSeed()
-      : randomSeed();
+    let seed;
+    let highScoreEligible;
   
-    document.getElementById("in-seed").value = seed;
-  
-    saveSettings();
+    if(enteredSeed){
+      // A seed was explicitly supplied by the player.
+      // It may be the current seed or a completely different seed,
+      // but either way this is NOT a fresh random maze.
+      seed = enteredSeed;
+      highScoreEligible = false;
+    } else {
+      // Nothing was entered, so create a fresh random maze.
+      seed = randomSeed();
+      highScoreEligible = true;
+    }
   
     newGame(
       seed,
@@ -1596,8 +1685,14 @@ document.addEventListener("keydown", (e) => {
       b,
       r,
       false,
-      selectedMode
+      selectedMode,
+      highScoreEligible
     );
+  
+    // Keep the seed out of the HTML field while the game is active.
+    updateSeedField();
+  
+    saveSettings();
   });
   document.getElementById("btn-restart").addEventListener("click", ()=>{
     const b = clampInt("in-boundary", 1, 9, 1);
@@ -1611,8 +1706,12 @@ document.addEventListener("keydown", (e) => {
       b,
       r,
       true,
-      selectedMode
+      selectedMode,
+      false
     );
+  
+    // Hide the seed again while the restarted game is active.
+    updateSeedField();
   });
   document.getElementById("btn-clear-history").addEventListener("click", ()=>{
     localStorage.removeItem(HISTORY_KEY);
@@ -1642,41 +1741,44 @@ document.addEventListener("keydown", (e) => {
   });
  
     // ---------------- Boot ----------------
-  const hadSavedSettings = loadSettings();
-
+  loadSettings();
+  
   // Clamp restored values in case localStorage was manually modified
-  // or the saved values are outside the allowed range.
+  // or the saved values were outside the allowed range.
   const initialSize =
     clampInt("in-size", 3, 12, 3);
-
+  
   const initialBoundary =
     clampInt("in-boundary", 1, 9, 1);
-
+  
   const initialRepeat =
     clampInt("in-repeat", 1, 9, 1);
-
+  
   let initialSeed =
     document.getElementById("in-seed").value.trim();
-
+  
   if(!initialSeed){
     initialSeed = randomSeed();
-    document.getElementById("in-seed").value = initialSeed;
   }
-
+  
   setModeSelection(selectedMode);
-
+  
   document.getElementById("history-panel")
     .removeAttribute("open");
-
+  
   newGame(
     initialSeed,
     initialSize,
     initialBoundary,
     initialRepeat,
     false,
-    selectedMode
+    selectedMode,
+    false
   );
-
+  
+  // Keep the seed out of the HTML field while the game is active.
+  updateSeedField();
+  
   saveSettings();
   renderHistory();
 })();
