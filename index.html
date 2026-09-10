@@ -1007,14 +1007,14 @@ function buildMazeFromSeed(seedStr, n) {
   
   function saveSettings(){
     const seedInput = document.getElementById("in-seed");
-  
+
     // While a game is active, the seed field is intentionally empty.
     // Save the actual current seed from game.seed instead.
     const savedSeed =
       game && game.seed
         ? game.seed
         : seedInput.value.trim();
-  
+
     const settings = {
       mode: selectedMode,
       size: document.getElementById("in-size").value,
@@ -1022,16 +1022,6 @@ function buildMazeFromSeed(seedStr, n) {
       repeat: document.getElementById("in-repeat").value,
       seed: savedSeed
     };
-  
-    try {
-      localStorage.setItem(
-        SETTINGS_KEY,
-        JSON.stringify(settings)
-      );
-    } catch(e) {
-      console.warn("Could not save settings:", e);
-    }
-  }
 
     try {
       localStorage.setItem(
@@ -1081,7 +1071,9 @@ function buildMazeFromSeed(seedStr, n) {
     }
   }
   
-  function gameOver(){ return game.finished || game.lost || game.forfeited; }
+  function gameOver(){
+    return !!game && (game.finished || game.lost || game.forfeited);
+  }
   let hintTimeout = null;
  
   function newGame(seedStr, n, boundaryLimit, repeatLimit, keepMaze, mode, highScoreEligible){
