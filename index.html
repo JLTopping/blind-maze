@@ -417,7 +417,6 @@
  
       <div class="seed-row">
         <input type="text" id="in-seed" class="mono" />
-        <button id="btn-random-seed" class="icon-btn">🎲</button>
         <button id="btn-copy-seed" class="icon-btn">⧉</button>
       </div>
       <div class="hint">Share this seed so someone else can play your exact maze — they enter it and tap New Maze.</div>
@@ -1629,10 +1628,6 @@ document.addEventListener("keydown", (e) => {
     });
   });
 
-  document.getElementById("btn-random-seed").addEventListener("click", ()=>{
-    document.getElementById("in-seed").value = randomSeed();
-    saveSettings();
-  });
   document.getElementById("in-seed").addEventListener("change", ()=>{
     saveSettings();
   });
