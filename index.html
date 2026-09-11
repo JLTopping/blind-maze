@@ -358,6 +358,11 @@
       <div class="label">HINTS USED</div>
       <div class="value mono" id="stat-hints">0</div>
     </div>
+    
+    <div class="stat">
+      <div class="label">% EXPLORED</div>
+      <div class="value mono" id="stat-explored">0%</div>
+    </div>
   
     <div class="stat mode-stat">
       <div class="label">MODE</div>
@@ -432,8 +437,10 @@
     <div id="history-summary"></div>
   
     <div class="history-note">
-      ✓ RANDOM games are eligible for high scores. Custom-seed, replayed,
-      restarted, or otherwise non-random games are recorded as unranked.
+      ✓ RANDOM games completed normally are eligible for high scores.
+      Custom-seed, replayed, restarted, interrupted, or otherwise non-random
+      games are recorded as unranked. Closing or reloading the app ends the
+      active game and reveals its map.
     </div>
   
     <div id="history-list"></div>
@@ -450,6 +457,7 @@
   const ANGLE = { E:0, S:90, W:180, N:270 };
   const HISTORY_KEY = "blindMazeHistoryV2";
   const SETTINGS_KEY = "blindMazeSettingsV1";
+  const SESSION_KEY = "blindMazeActiveGameV1";
   let seedWasRevealed = false;
  
   // ---------------- Seeded RNG (xmur3 + mulberry32) ----------------
@@ -1004,6 +1012,61 @@ function buildMazeFromSeed(seedStr, n) {
     }
   }
   
+  function saveActiveGame(){
+    if(!game || !maze) return;
+  
+    const state = {
+      seed: game.seed,
+      size: game.size,
+      mode: game.mode,
+  
+      highScoreEligible: game.highScoreEligible,
+  
+      boundaryLimit: game.boundaryLimit,
+      repeatLimit: game.repeatLimit,
+  
+      row: game.row,
+      col: game.col,
+      facing: game.facing,
+      facingAngle: game.facingAngle,
+  
+      finished: game.finished,
+      lost: game.lost,
+      forfeited: game.forfeited,
+  
+      boundaryCount: game.boundaryCount,
+      repeatCount: game.repeatCount,
+  
+      hitWallsSeen: [...game.hitWallsSeen],
+      moves: game.moves,
+      hintsUsed: game.hintsUsed,
+  
+      path: game.path,
+      hitMarks: game.hitMarks,
+  
+      elapsedMs: game.elapsedMs,
+      startTime: game.startTime,
+  
+      revealed: game.revealed
+    };
+  
+    try {
+      localStorage.setItem(
+        SESSION_KEY,
+        JSON.stringify(state)
+      );
+    } catch(e) {
+      console.warn("Could not save active game:", e);
+    }
+  }
+  function clearActiveGame(){
+    try {
+      localStorage.removeItem(SESSION_KEY);
+    } catch(e) {
+      console.warn("Could not clear active game:", e);
+    }
+  }
+  
   function saveSettings(){
     const seedInput = document.getElementById("in-seed");
 
@@ -1103,6 +1166,7 @@ function buildMazeFromSeed(seedStr, n) {
     setControlsEnabled(true);
     updateStats();
     startTimer();
+    saveActiveGame();
   }
  
   function updateModeBanner(){
@@ -1125,17 +1189,38 @@ function buildMazeFromSeed(seedStr, n) {
     return `${m}:${rem.padStart(4,"0")}`;
   }
   function updateTimeDisplay(){ document.getElementById("stat-time").textContent = formatTime(game.elapsedMs); }
- 
+  function getExploredPercent(){
+    if(!game || !maze) return 0;
+  
+    const uniqueCells = new Set(
+      game.path.map(([r,c]) => `${r},${c}`)
+    );
+  
+    return Math.round(
+      (uniqueCells.size / (maze.n * maze.n)) * 100
+    );
+  }
   function updateStats(){
     document.getElementById("stat-moves").textContent = game.moves;
     updateTimeDisplay();
+  
     const b = document.getElementById("stat-boundary");
     b.textContent = `${game.boundaryCount} / ${game.boundaryLimit}`;
-    b.className = "value mono" + (game.boundaryCount >= game.boundaryLimit-1 ? " danger":"");
+    b.className =
+      "value mono" +
+      (game.boundaryCount >= game.boundaryLimit-1 ? " danger":"");
+  
     const rep = document.getElementById("stat-repeat");
     rep.textContent = `${game.repeatCount} / ${game.repeatLimit}`;
-    rep.className = "value mono" + (game.repeatCount >= game.repeatLimit-1 ? " danger":"");
-    document.getElementById("stat-hints").textContent = game.hintsUsed;
+    rep.className =
+      "value mono" +
+      (game.repeatCount >= game.repeatLimit-1 ? " danger":"");
+  
+    document.getElementById("stat-hints").textContent =
+      game.hintsUsed;
+  
+    document.getElementById("stat-explored").textContent =
+      `${getExploredPercent()}%`;
   }
  
   function setMessage(text, cls){
@@ -1392,8 +1477,10 @@ const HARD_FEEDBACK = {
     revealMaze();
     saveHistory(result);
     renderHistory();
+  
+    clearActiveGame();
   }
- 
+   
   function doForward(){
     if(gameOver()) return;
     const n = maze.n;
@@ -1406,6 +1493,7 @@ const HARD_FEEDBACK = {
       game.hitMarks.push({r:game.row,c:game.col,d:game.facing, type: fatal?"fatal":"boundary"});
       animateFeedback("boundary", ()=>{
         updateStats();
+        saveActiveGame();
         if(fatal){ setMessage(`BOUNDARY — lost. You hit the edge of your maze.`, "fatal"); endGame("lost"); }
         else setMessage(`Boundary. (${game.boundaryCount}/${game.boundaryLimit} — one more and it's over)`, "boundary");
       });
@@ -1421,6 +1509,7 @@ const HARD_FEEDBACK = {
       game.hitMarks.push({r:game.row,c:game.col,d:game.facing, type: fatal?"fatal":"wall"});
       animateFeedback("wall", ()=>{
         updateStats();
+        saveActiveGame();
         if(fatal){ setMessage(`lost - You hit the same wall again.`, "fatal"); endGame("lost"); }
         else if(seenBefore) setMessage(`That wall again. (${game.repeatCount}/${game.repeatLimit} repeats — careful)`, "hit");
         else setMessage(`Wall.`, "hit");
@@ -1430,9 +1519,11 @@ const HARD_FEEDBACK = {
  
     game.moves++;
     animateFeedback("success", ()=>{
-      game.row = nr; game.col = nc;
+      game.row = nr;
+      game.col = nc;
       game.path.push([nr,nc]);
       updateStats();
+      saveActiveGame();
       if(nr===n-1 && nc===n-1){ setMessage("You solved it! 🎉", "win"); endGame("win"); }
       else setMessage("Success — you moved.", "");
     });
@@ -1447,11 +1538,15 @@ const HARD_FEEDBACK = {
  
     if(game.mode === "easy"){
       setMessage(`Turned ${dir}. Facing ${longDir(game.facing)}.`, "");
-      animateTurnVisual(oldAngle, newAngle);
+      animateTurnVisual(oldAngle, newAngle, ()=>{
+        saveActiveGame();
+      });
     } else {
-      game.facingAngle = newAngle; // tracked internally, never rendered
+      game.facingAngle = newAngle;
       setMessage(`Turned ${dir}.`, "");
-      animateFeedback("turn");
+      animateFeedback("turn", ()=>{
+        saveActiveGame();
+      });
     }
   }
   function longDir(d){ return {N:"north", E:"east", S:"south", W:"west"}[d]; }
@@ -1466,6 +1561,7 @@ const HARD_FEEDBACK = {
     if(game.mode !== "hard" || gameOver() || hintTimeout) return;
     game.hintsUsed++;
     updateStats();
+    saveActiveGame();
     const msgEl = document.getElementById("message");
     const prevText = msgEl.textContent, prevClass = msgEl.className;
     game.hintActive = true;
@@ -1498,6 +1594,7 @@ const HARD_FEEDBACK = {
       repeatLimit: game.repeatLimit,
       moves: game.moves,
       hints: game.hintsUsed,
+      exploredPercent: getExploredPercent(),
       timeMs: Math.round(game.elapsedMs),
       result,
       ts: Date.now(),
@@ -1529,7 +1626,7 @@ const HARD_FEEDBACK = {
     summaryEl.innerHTML = keys.length
       ? "Best times — " + keys.map(k=>{
           const [size,mode] = k.split("|");
-          return `${size}×${size} ${mode.toUpperCase()}: ${formatTime(best[k].timeMs)}`;
+          return `${size}×${size} ${mode.toUpperCase()}: ${formatTime(best[k].timeMs)} · ${best[k].exploredPercent ?? 0}% explored`;
         }).join(" · ")
       : "No wins yet.";
  
@@ -1541,7 +1638,7 @@ const HARD_FEEDBACK = {
       const dateStr = date.toLocaleDateString(undefined,{month:"short",day:"numeric"}) + " " + date.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"});
       return `<div class="hist-row">
         <span class="res ${resClass} mono">${resLabel} · ${g.mode.toUpperCase()}${g.mode==="hard" ? " · "+(g.hints||0)+" hint"+((g.hints||0)===1?"":"s") : ""}${scoreLabel}</span>
-        <span class="mono">${g.size}×${g.size} · ${formatTime(g.timeMs)} · ${g.moves} moves</span>
+        <span class="mono">${g.size}×${g.size} · ${formatTime(g.timeMs)} · ${g.moves} moves · ${g.exploredPercent ?? 0}% explored</span>
         <span class="meta">seed ${g.seed} · limits: boundary ${g.boundaryLimit}, repeat ${g.repeatLimit} · ${dateStr}</span>
       </div>`;
     }).join("");
@@ -1727,8 +1824,100 @@ document.addEventListener("keydown", (e) => {
       helpOverlay.classList.remove("open");
     }
   });
- 
-    // ---------------- Boot ----------------
+  
+  function restoreInterruptedGame(){
+    let saved;
+  
+    try {
+      saved = JSON.parse(
+        localStorage.getItem(SESSION_KEY)
+      );
+    } catch(e) {
+      console.warn("Could not load saved active game:", e);
+      return false;
+    }
+  
+    if(!saved) return false;
+  
+    // Rebuild the exact same maze from the saved seed.
+    maze = buildMazeFromSeed(
+      saved.seed,
+      saved.size
+    );
+  
+    game = {
+      seed: saved.seed,
+      size: saved.size,
+      mode: saved.mode,
+  
+      // An interrupted game can never be ranked.
+      highScoreEligible: false,
+  
+      row: saved.row,
+      col: saved.col,
+      facing: saved.facing,
+      facingAngle:
+        saved.facingAngle ?? ANGLE[saved.facing],
+  
+      finished: false,
+      lost: false,
+      forfeited: true,
+  
+      boundaryLimit: saved.boundaryLimit,
+      repeatLimit: saved.repeatLimit,
+  
+      boundaryCount: saved.boundaryCount,
+      repeatCount: saved.repeatCount,
+  
+      hitWallsSeen:
+        new Set(saved.hitWallsSeen || []),
+  
+      moves: saved.moves,
+      hintsUsed: saved.hintsUsed,
+  
+      hintActive: false,
+  
+      path: saved.path || [[0,0]],
+      hitMarks: saved.hitMarks || [],
+  
+      startTime: performance.now(),
+      elapsedMs: saved.elapsedMs || 0,
+  
+      revealed: true
+    };
+  
+    stopTimer();
+  
+    layoutReveal();
+    renderReveal();
+  
+    document.getElementById("legend")
+      .classList.remove("hidden");
+  
+    document.getElementById("reveal-banner").textContent =
+      `${maze.n}×${maze.n} · ${game.mode.toUpperCase()} · seed ${game.seed} · ✕ UNRANKED`;
+  
+    updateModeBanner();
+    updateStats();
+  
+    setControlsEnabled(false);
+  
+    setMessage(
+      "Game ended because the app was closed or reloaded.",
+      "fatal"
+    );
+  
+    updateSeedField();
+  
+    // Record the interrupted run exactly once.
+    saveHistory("forfeit");
+    renderHistory();
+  
+    clearActiveGame();
+  
+    return true;
+  }
+  // ---------------- Boot ----------------
   loadSettings();
   
   // Clamp restored values in case localStorage was manually modified
@@ -1754,20 +1943,28 @@ document.addEventListener("keydown", (e) => {
   document.getElementById("history-panel")
     .removeAttribute("open");
   
-  newGame(
-    initialSeed,
-    initialSize,
-    initialBoundary,
-    initialRepeat,
-    false,
-    selectedMode,
-    true
-  );
+  // If there is an unfinished game from before the app was
+  // closed/reloaded, reveal that game instead of starting a new one.
+  const restoredInterruptedGame =
+    restoreInterruptedGame();
   
-  // Keep the seed out of the HTML field while the game is active.
-  updateSeedField();
+  if(!restoredInterruptedGame){
+    newGame(
+      initialSeed,
+      initialSize,
+      initialBoundary,
+      initialRepeat,
+      false,
+      selectedMode,
+      true
+    );
   
-  saveSettings();
+    // Keep the seed out of the HTML field while the game is active.
+    updateSeedField();
+  
+    saveSettings();
+  }
+  
   renderHistory();
 })();
 </script>
