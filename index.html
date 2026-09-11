@@ -74,12 +74,42 @@
     margin-top: 1px;
   }
   
-  #readout { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  #readout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
   .stat { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 4px; padding: 8px 10px; }
   .stat .label { font-size: 10px; color: var(--text-lo); margin-bottom: 2px; }
   .stat .value { font-size: 16px; font-weight: 600; }
   .stat .value.danger { color: var(--wall-fatal); }
  
+  #game-stats-panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 4px 10px;
+  }
+  
+  #game-stats-panel summary {
+    padding: 9px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: var(--text-lo);
+    cursor: pointer;
+  }
+  
+  #game-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    padding: 4px 0 8px;
+  }
+  
+  #game-stats .stat {
+    padding: 8px 9px;
+  }
   .hints-stat .value-row {
     display: flex;
     align-items: center;
@@ -338,31 +368,6 @@
       <div class="label">MOVES</div>
       <div class="value mono" id="stat-moves">0</div>
     </div>
-
-    <div class="stat">
-      <div class="label">TIME</div>
-      <div class="value mono" id="stat-time">0:00.0</div>
-    </div>
-
-    <div class="stat">
-      <div class="label">BOUNDARY HITS</div>
-      <div class="value mono" id="stat-boundary">0 / 1</div>
-    </div>
-
-    <div class="stat">
-      <div class="label">REPEAT WALL HITS</div>
-      <div class="value mono" id="stat-repeat">0 / 1</div>
-    </div>
-  
-    <div class="stat">
-      <div class="label">HINTS USED</div>
-      <div class="value mono" id="stat-hints">0</div>
-    </div>
-    
-    <div class="stat">
-      <div class="label">% EXPLORED</div>
-      <div class="value mono" id="stat-explored">0%</div>
-    </div>
   
     <div class="stat mode-stat">
       <div class="label">MODE</div>
@@ -370,6 +375,42 @@
       <div class="mode-description" id="mode-stat-desc">facing shown</div>
     </div>
   </div>
+  
+  <details id="game-stats-panel">
+    <summary>GAME STATS</summary>
+  
+    <div id="game-stats">
+      <div class="stat">
+        <div class="label">TIME</div>
+        <div class="value mono" id="stat-time">0:00.0</div>
+      </div>
+  
+      <div class="stat">
+        <div class="label">HINTS USED</div>
+        <div class="value mono" id="stat-hints">0</div>
+      </div>
+  
+      <div class="stat">
+        <div class="label">% EXPLORED</div>
+        <div class="value mono" id="stat-explored">0%</div>
+      </div>
+  
+      <div class="stat">
+        <div class="label">DEAD ENDS HIT</div>
+        <div class="value mono" id="stat-dead-ends">0</div>
+      </div>
+  
+      <div class="stat">
+        <div class="label">BOUNDARY HITS</div>
+        <div class="value mono" id="stat-boundary">0 / 1</div>
+      </div>
+  
+      <div class="stat">
+        <div class="label">REPEAT WALL HITS</div>
+        <div class="value mono" id="stat-repeat">0 / 1</div>
+      </div>
+    </div>
+  </details>
  
     <div id="screen-wrap">
     <div id="reveal-banner" class="mono"></div>
@@ -1038,6 +1079,7 @@ function buildMazeFromSeed(seedStr, n) {
       repeatCount: game.repeatCount,
   
       hitWallsSeen: [...game.hitWallsSeen],
+      deadEndsSeen: [...game.deadEndsSeen],
       moves: game.moves,
       hintsUsed: game.hintsUsed,
   
@@ -1149,6 +1191,7 @@ function buildMazeFromSeed(seedStr, n) {
       boundaryLimit, repeatLimit,
       boundaryCount:0, repeatCount:0,
       hitWallsSeen: new Set(),
+      deadEndsSeen: new Set(),
       moves:0, hintsUsed:0, hintActive:false,
       path:[[0,0]],
       hitMarks: [],
@@ -1218,11 +1261,40 @@ function buildMazeFromSeed(seedStr, n) {
   
     document.getElementById("stat-hints").textContent =
       game.hintsUsed;
-  
+    
     document.getElementById("stat-explored").textContent =
       `${getExploredPercent()}%`;
+    
+    document.getElementById("stat-dead-ends").textContent =
+      game.deadEndsSeen.size;
   }
- 
+  function isDeadEnd(r, c){
+    if(!maze || !game) return false;
+  
+    // Starting and finishing cells are never counted as dead ends.
+    if(
+      (r === 0 && c === 0) ||
+      (r === maze.n - 1 && c === maze.n - 1)
+    ){
+      return false;
+    }
+  
+    let openCount = 0;
+  
+    for(const d of DIRS){
+      if(!maze.walls[r][c].has(d)){
+        const [dr, dc] = DELTA[d];
+        const nr = r + dr;
+        const nc = c + dc;
+  
+        if(maze.inBounds(nr, nc)){
+          openCount++;
+        }
+      }
+    }
+  
+    return openCount === 1;
+  }
   function setMessage(text, cls){
     const el = document.getElementById("message");
     el.textContent = text;
@@ -1518,10 +1590,17 @@ const HARD_FEEDBACK = {
     }
  
     game.moves++;
+
     animateFeedback("success", ()=>{
       game.row = nr;
       game.col = nc;
       game.path.push([nr,nc]);
+    
+      // Count each unique dead-end cell the player reaches.
+      if(isDeadEnd(nr, nc)){
+        game.deadEndsSeen.add(`${nr},${nc}`);
+      }
+    
       updateStats();
       saveActiveGame();
       if(nr===n-1 && nc===n-1){ setMessage("You solved it! 🎉", "win"); endGame("win"); }
@@ -1595,6 +1674,7 @@ const HARD_FEEDBACK = {
       moves: game.moves,
       hints: game.hintsUsed,
       exploredPercent: getExploredPercent(),
+      deadEndsHit: game.deadEndsSeen.size,
       timeMs: Math.round(game.elapsedMs),
       result,
       ts: Date.now(),
@@ -1626,7 +1706,7 @@ const HARD_FEEDBACK = {
     summaryEl.innerHTML = keys.length
       ? "Best times — " + keys.map(k=>{
           const [size,mode] = k.split("|");
-          return `${size}×${size} ${mode.toUpperCase()}: ${formatTime(best[k].timeMs)} · ${best[k].exploredPercent ?? 0}% explored`;
+          return `${size}×${size} ${mode.toUpperCase()}: ${formatTime(best[k].timeMs)} · ${best[k].deadEndsHit ?? 0} dead ends · ${best[k].exploredPercent ?? 0}% explored`;
         }).join(" · ")
       : "No wins yet.";
  
@@ -1638,7 +1718,7 @@ const HARD_FEEDBACK = {
       const dateStr = date.toLocaleDateString(undefined,{month:"short",day:"numeric"}) + " " + date.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"});
       return `<div class="hist-row">
         <span class="res ${resClass} mono">${resLabel} · ${g.mode.toUpperCase()}${g.mode==="hard" ? " · "+(g.hints||0)+" hint"+((g.hints||0)===1?"":"s") : ""}${scoreLabel}</span>
-        <span class="mono">${g.size}×${g.size} · ${formatTime(g.timeMs)} · ${g.moves} moves · ${g.exploredPercent ?? 0}% explored</span>
+        <span class="mono">${g.size}×${g.size} · ${formatTime(g.timeMs)} · ${g.moves} moves · ${g.deadEndsHit ?? 0} dead ends · ${g.exploredPercent ?? 0}% explored</span>
         <span class="meta">seed ${g.seed} · limits: boundary ${g.boundaryLimit}, repeat ${g.repeatLimit} · ${dateStr}</span>
       </div>`;
     }).join("");
@@ -1871,7 +1951,10 @@ document.addEventListener("keydown", (e) => {
   
       hitWallsSeen:
         new Set(saved.hitWallsSeen || []),
-  
+      
+      deadEndsSeen:
+        new Set(saved.deadEndsSeen || []),
+      
       moves: saved.moves,
       hintsUsed: saved.hintsUsed,
   
