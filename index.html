@@ -340,10 +340,11 @@
       <ul>
         <li>
           <strong>Easy:</strong> Your facing direction is shown on the ball.
+          Use <strong>HINT</strong> for a 2-second look at the maze.
         </li>
         <li>
-          <strong>Hard:</strong> Your facing direction is hidden. Use the
-          <strong>HINT</strong> button if you need a 2-second peek.
+          <strong>Hard:</strong> Your facing direction is hidden. Use
+          <strong>HINT</strong> to reveal your facing direction for 2 seconds.
         </li>
       </ul>
 
@@ -448,7 +449,12 @@
         <button id="mode-easy" class="mode-btn active">EASY</button>
         <button id="mode-hard" class="mode-btn">HARD</button>
       </div>
-      <div class="hint">Easy: the ball shows which way it's facing, and moves/turns are animated toward that direction. Hard: no facing indicator anywhere — not on the ball, not in the text, not in the animation. A successful move grows the ball green, a wall grows it red, a boundary hit grows it red with an extra ring. A HINT button reveals your facing for 2 seconds — every hint you use is logged in your high score.</div>
+      <div class="hint">
+        Easy: the ball shows which way it's facing, and moves/turns are animated toward that direction.
+        Hard: no facing indicator anywhere — not on the ball, not in the text, not in the animation.
+        A HINT gives Easy players a 2-second view of the actual maze, while Hard players get their facing direction for 2 seconds.
+        Every hint you use is logged in your high score.
+      </div>
  
       <label for="in-size">Maze size (n × n)</label>
       <input type="number" id="in-size" min="3" max="12" value="3" />
@@ -1179,6 +1185,7 @@ function buildMazeFromSeed(seedStr, n) {
     return !!game && (game.finished || game.lost || game.forfeited);
   }
   let hintTimeout = null;
+  let hintAnimation = null;
  
   function newGame(seedStr, n, boundaryLimit, repeatLimit, keepMaze, mode, highScoreEligible){
     if(hintTimeout){ clearTimeout(hintTimeout); hintTimeout = null; }
@@ -1203,7 +1210,7 @@ function buildMazeFromSeed(seedStr, n) {
     renderBlind();
     document.getElementById("reveal-banner").textContent = "";
     document.getElementById("legend").classList.add("hidden");
-    document.getElementById("hint-btn").style.display = mode==="hard" ? "flex" : "none";
+    document.getElementById("hint-btn").style.display = "flex";
     updateModeBanner();
     setMessage(mode==="easy" ? "Facing east. Find the exit." : "Find the exit.", "");
     setControlsEnabled(true);
@@ -1314,8 +1321,10 @@ function buildMazeFromSeed(seedStr, n) {
   let cell = 40, pad = 14, blindSize = 260;
  
   function setCanvasCss(sizePx){
-    canvas.width = sizePx * devicePixelRatio; canvas.height = sizePx * devicePixelRatio;
-    canvas.style.width = sizePx+"px"; canvas.style.height = sizePx+"px";
+    canvas.width = sizePx * devicePixelRatio;
+    canvas.height = sizePx * devicePixelRatio;
+    canvas.style.width = sizePx+"px";
+    canvas.style.height = sizePx+"px";
     ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
   }
   function layoutBlind(){ blindSize = Math.min(280, window.innerWidth - 52); setCanvasCss(blindSize); }
@@ -1323,7 +1332,12 @@ function buildMazeFromSeed(seedStr, n) {
     const n = maze.n;
     const maxW = Math.min(360, window.innerWidth - 52);
     cell = Math.floor((maxW - pad*2) / n);
-    setCanvasCss(cell*n + pad*2);
+
+    const size = cell*n + pad*2;
+
+    setCanvasCss(size);
+
+    return size;
   }
   function getCss(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
  
@@ -1635,26 +1649,526 @@ const HARD_FEEDBACK = {
     setMessage("Forfeited.", "");
     endGame("forfeit");
   }
- 
+  // ---- Hint rendering: maze/grid visible, but no walls ----
+  function renderHintMap(){
+    const n = maze.n;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Faint grid
+    ctx.strokeStyle = getCss("--grid-faint");
+    ctx.lineWidth = 1;
+
+    for(let i = 0; i <= n; i++){
+      ctx.beginPath();
+      ctx.moveTo(pad, pad + i * cell);
+      ctx.lineTo(pad + n * cell, pad + i * cell);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(pad + i * cell, pad);
+      ctx.lineTo(pad + i * cell, pad + n * cell);
+      ctx.stroke();
+    }
+
+    // Existing path
+    ctx.strokeStyle = getCss("--trail");
+    ctx.lineWidth = Math.max(3, cell * 0.12);
+    ctx.lineCap = "round";
+
+    ctx.beginPath();
+
+    game.path.forEach(([r,c], i) => {
+      const [x,y] = cellCenter(r,c);
+
+      if(i === 0){
+        ctx.moveTo(x,y);
+      } else {
+        ctx.lineTo(x,y);
+      }
+    });
+
+    ctx.stroke();
+
+    // Existing hit marks
+    for(const h of game.hitMarks){
+      const [cx,cy] = cellCenter(h.r,h.c);
+      const [dr,dc] = DELTA[h.d];
+
+      const mx = cx + dc * cell * 0.5;
+      const my = cy + dr * cell * 0.5;
+
+      ctx.fillStyle =
+        h.type === "fatal"
+          ? getCss("--wall-fatal")
+          : h.type === "boundary"
+            ? getCss("--boundary-hit")
+            : getCss("--wall-hit");
+
+      ctx.beginPath();
+      ctx.arc(
+        mx,
+        my,
+        Math.max(3, cell * 0.09),
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+    }
+
+    // Goal
+    const [gx,gy] = cellCenter(n - 1, n - 1);
+
+    ctx.strokeStyle = getCss("--win");
+    ctx.lineWidth = 2;
+
+    ctx.strokeRect(
+      gx - cell * 0.28,
+      gy - cell * 0.28,
+      cell * 0.56,
+      cell * 0.56
+    );
+  }
+  function animateEasyHint(){
+    if(hintAnimation){
+      cancelAnimationFrame(hintAnimation);
+      hintAnimation = null;
+    }
+
+    const SHRINK_MOVE = 200;
+    const FADE_IN = 100;
+    const HOLD = 2000;
+    const FADE_OUT = 100;
+    const RETURN = 200;
+
+    const TOTAL =
+      SHRINK_MOVE +
+      FADE_IN +
+      HOLD +
+      FADE_OUT +
+      RETURN;
+
+    /*
+     * Recalculate the blind layout immediately before we
+     * capture its dimensions. This fixes the first-hint-after-
+     * resize problem.
+     */
+    layoutBlind();
+
+    const blindSizeAtStart = blindSize;
+
+    /*
+     * Switch to the maze-sized canvas once.
+     */
+    layoutReveal();
+
+    const revealSize = cell * maze.n + pad * 2;
+
+    /*
+     * The canvas is now the reveal-sized canvas.
+     *
+     * Horizontally, the canvas grows around its center, so
+     * the old blind center moves to the reveal canvas center.
+     *
+     * Vertically, keep the blind ball's original coordinate.
+     * This prevents the extra downward shift.
+     */
+    const blindCenterX = revealSize / 2;
+    const blindCenterY = blindSizeAtStart / 2;
+
+    /*
+     * This is the exact ball radius used by renderBlind()
+     * at the moment the hint starts.
+     */
+    const blindRadius =
+      blindSizeAtStart * 0.075;
+
+    const [mazeX, mazeY] =
+      cellCenter(game.row, game.col);
+
+    /*
+     * This is the exact ball radius used by renderReveal().
+     */
+    const mazeRadius =
+      cell * 0.24;
+
+    const startTime = performance.now();
+
+    function easeInOut(t){
+      return t < 0.5
+        ? 2 * t * t
+        : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    }
+
+    /*
+     * Draw the normal blind-mode ball at an arbitrary
+     * position and radius.
+     *
+     * The arrow is copied directly from renderBlind(),
+     * with the dimensions scaled proportionally to the
+     * current ball radius.
+     */
+    function drawHintBall(x, y, radius){
+      ctx.save();
+
+      ctx.translate(x, y);
+
+      ctx.shadowColor = getCss("--ball-glow");
+      ctx.shadowBlur = radius / 0.075 * 0.12;
+
+      ctx.fillStyle = getCss("--ball");
+
+      ctx.beginPath();
+      ctx.arc(
+        0,
+        0,
+        radius,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+
+      ctx.shadowBlur = 0;
+
+      // Easy mode always shows facing direction.
+      ctx.rotate(
+        (game.facingAngle ?? ANGLE[game.facing]) *
+        Math.PI / 180
+      );
+
+      ctx.fillStyle = getCss("--bg-screen");
+
+      const size = radius / 0.075;
+
+      ctx.beginPath();
+
+      ctx.moveTo(size * 0.065, 0);
+      ctx.lineTo(size * 0.020, -size * 0.035);
+      ctx.lineTo(size * 0.020, size * 0.035);
+
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    function clearToBackground(){
+      ctx.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
+
+      ctx.fillStyle = getCss("--bg-screen");
+
+      ctx.fillRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
+    }
+
+    function frame(now){
+      const elapsed =
+        now - startTime;
+
+      // ==================================================
+      // 0–200ms
+      //
+      // Normal blind ball shrinks and moves to the
+      // player's actual cell.
+      // ==================================================
+      if(elapsed < SHRINK_MOVE){
+        const t =
+          elapsed / SHRINK_MOVE;
+
+        const e =
+          easeInOut(t);
+
+        clearToBackground();
+
+        const x =
+          blindCenterX +
+          (mazeX - blindCenterX) * e;
+
+        const y =
+          blindCenterY +
+          (mazeY - blindCenterY) * e;
+
+        const radius =
+          blindRadius +
+          (mazeRadius - blindRadius) * e;
+
+        drawHintBall(
+          x,
+          y,
+          radius
+        );
+
+        hintAnimation =
+          requestAnimationFrame(frame);
+
+        return;
+      }
+
+      // ==================================================
+      // 200–300ms
+      //
+      // Wall-less map fades in behind the ball.
+      // ==================================================
+      if(elapsed < SHRINK_MOVE + FADE_IN){
+        const t =
+          (elapsed - SHRINK_MOVE) /
+          FADE_IN;
+
+        const e =
+          easeInOut(t);
+
+        renderHintMap();
+
+        ctx.save();
+
+        ctx.fillStyle =
+          getCss("--bg-screen");
+
+        ctx.globalAlpha =
+          1 - e;
+
+        ctx.fillRect(
+          0,
+          0,
+          canvas.width,
+          canvas.height
+        );
+
+        ctx.restore();
+
+        drawHintBall(
+          mazeX,
+          mazeY,
+          mazeRadius
+        );
+
+        hintAnimation =
+          requestAnimationFrame(frame);
+
+        return;
+      }
+
+      // ==================================================
+      // 300–2300ms
+      //
+      // Wall-less map remains visible for 2 seconds.
+      // ==================================================
+      if(elapsed < SHRINK_MOVE + FADE_IN + HOLD){
+        renderHintMap();
+
+        drawHintBall(
+          mazeX,
+          mazeY,
+          mazeRadius
+        );
+
+        hintAnimation =
+          requestAnimationFrame(frame);
+
+        return;
+      }
+
+      // ==================================================
+      // 2300–2400ms
+      //
+      // Map fades away while the ball remains visible.
+      // ==================================================
+      if(elapsed < SHRINK_MOVE + FADE_IN + HOLD + FADE_OUT){
+        const phaseStart =
+          SHRINK_MOVE +
+          FADE_IN +
+          HOLD;
+
+        const t =
+          (elapsed - phaseStart) /
+          FADE_OUT;
+
+        const e =
+          easeInOut(t);
+
+        renderHintMap();
+
+        ctx.save();
+
+        ctx.fillStyle =
+          getCss("--bg-screen");
+
+        ctx.globalAlpha = e;
+
+        ctx.fillRect(
+          0,
+          0,
+          canvas.width,
+          canvas.height
+        );
+
+        ctx.restore();
+
+        drawHintBall(
+          mazeX,
+          mazeY,
+          mazeRadius
+        );
+
+        hintAnimation =
+          requestAnimationFrame(frame);
+
+        return;
+      }
+
+      // ==================================================
+      // 2400–2600ms
+      //
+      // Ball returns to the center and grows back to
+      // exactly its normal blind-mode size.
+      // ==================================================
+      if(elapsed < TOTAL){
+        const phaseStart =
+          SHRINK_MOVE +
+          FADE_IN +
+          HOLD +
+          FADE_OUT;
+
+        const t =
+          (elapsed - phaseStart) /
+          RETURN;
+
+        const e =
+          easeInOut(t);
+
+        clearToBackground();
+
+        const x =
+          mazeX +
+          (blindCenterX - mazeX) * e;
+
+        const y =
+          mazeY +
+          (blindCenterY - mazeY) * e;
+
+        const radius =
+          mazeRadius +
+          (blindRadius - mazeRadius) * e;
+
+        drawHintBall(
+          x,
+          y,
+          radius
+        );
+
+        hintAnimation =
+          requestAnimationFrame(frame);
+
+        return;
+      }
+
+      // ==================================================
+      // COMPLETE
+      // ==================================================
+
+      hintAnimation = null;
+      game.hintActive = false;
+
+      /*
+       * Restore the current blind layout and let the normal
+       * renderer take over completely.
+       */
+      layoutBlind();
+      renderBlind();
+
+      const msgEl =
+        document.getElementById("message");
+
+      msgEl.textContent =
+        game._hintPreviousMessage || "";
+
+      msgEl.className =
+        game._hintPreviousMessageClass || "";
+
+      setControlsEnabled(true);
+
+      saveActiveGame();
+    }
+
+    hintAnimation =
+      requestAnimationFrame(frame);
+  }
+  
   function doHint(){
-    if(game.mode !== "hard" || gameOver() || hintTimeout) return;
+    if(gameOver() || hintTimeout) return;
+  
     game.hintsUsed++;
+  
     updateStats();
     saveActiveGame();
+  
     const msgEl = document.getElementById("message");
-    const prevText = msgEl.textContent, prevClass = msgEl.className;
-    game.hintActive = true;
-    renderBlind();
-    setMessage(`Facing ${longDir(game.facing)}.`, "");
-    setControlsEnabled(false);
-    hintTimeout = setTimeout(()=>{
-      game.hintActive = false;
+  
+    game._hintPreviousMessage = msgEl.textContent;
+    game._hintPreviousMessageClass = msgEl.className;
+  
+    // ==================================================
+    // EASY MODE
+    // ==================================================
+  
+    if(game.mode === "easy"){
+      game.hintActive = true;
+    
+      setControlsEnabled(false);
+    
+      setMessage(
+        "HINT — map revealed for 2 seconds.",
+        ""
+      );
+    
+      animateEasyHint();
+    
+      return;
+    }
+  
+    // ==================================================
+    // HARD MODE
+    // ==================================================
+  
+    if(game.mode === "hard"){
+      game.hintActive = true;
+  
       renderBlind();
-      msgEl.textContent = prevText;
-      msgEl.className = prevClass;
-      setControlsEnabled(true);
-      hintTimeout = null;
-    }, 2000);
+  
+      setMessage(
+        `Facing ${longDir(game.facing)}.`,
+        ""
+      );
+  
+      setControlsEnabled(false);
+  
+      hintTimeout = setTimeout(()=>{
+        game.hintActive = false;
+  
+        renderBlind();
+  
+        msgEl.textContent =
+          game._hintPreviousMessage;
+  
+        msgEl.className =
+          game._hintPreviousMessageClass;
+  
+        setControlsEnabled(true);
+  
+        hintTimeout = null;
+  
+        saveActiveGame();
+      }, 2000);
+    }
   }
  
   // ---------------- History / high scores ----------------
@@ -1884,10 +2398,16 @@ document.addEventListener("keydown", (e) => {
   });
  
   window.addEventListener("resize", ()=>{
-    if(game.revealed){ layoutReveal(); renderReveal(); }
-    else { layoutBlind(); renderBlind(); }
+    if(game.revealed){
+      layoutReveal();
+      renderReveal();
+    }
+    else {
+      layoutBlind();
+      renderBlind();
+    }
   });
-  
+    
   // ---------------- Help ----------------
   const helpOverlay = document.getElementById("help-overlay");
 
