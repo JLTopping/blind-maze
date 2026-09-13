@@ -1655,7 +1655,6 @@ const HARD_FEEDBACK = {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Faint grid
     ctx.strokeStyle = getCss("--grid-faint");
     ctx.lineWidth = 1;
 
@@ -1671,7 +1670,6 @@ const HARD_FEEDBACK = {
       ctx.stroke();
     }
 
-    // Existing path
     ctx.strokeStyle = getCss("--trail");
     ctx.lineWidth = Math.max(3, cell * 0.12);
     ctx.lineCap = "round";
@@ -1690,33 +1688,6 @@ const HARD_FEEDBACK = {
 
     ctx.stroke();
 
-    // Existing hit marks
-    for(const h of game.hitMarks){
-      const [cx,cy] = cellCenter(h.r,h.c);
-      const [dr,dc] = DELTA[h.d];
-
-      const mx = cx + dc * cell * 0.5;
-      const my = cy + dr * cell * 0.5;
-
-      ctx.fillStyle =
-        h.type === "fatal"
-          ? getCss("--wall-fatal")
-          : h.type === "boundary"
-            ? getCss("--boundary-hit")
-            : getCss("--wall-hit");
-
-      ctx.beginPath();
-      ctx.arc(
-        mx,
-        my,
-        Math.max(3, cell * 0.09),
-        0,
-        Math.PI * 2
-      );
-      ctx.fill();
-    }
-
-    // Goal
     const [gx,gy] = cellCenter(n - 1, n - 1);
 
     ctx.strokeStyle = getCss("--win");
